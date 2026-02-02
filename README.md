@@ -88,11 +88,24 @@ make health
 
 **Service URLs:**
 - Fuseki: http://localhost:3030 (admin/admin123)
-- Milvus Attu UI: http://localhost:8080
 - Ollama: http://localhost:11434
 - Phoenix: http://localhost:6006
 - API: http://localhost:8001
 - Docs: http://localhost:8000
+
+**Optional: Start Milvus Web UI (Attu)**
+
+Attu provides a web interface to browse and manage Milvus vector collections:
+
+```bash
+# Start services with Attu UI
+make services-up-ui
+
+# Or manually with docker-compose
+cd docker && docker-compose --profile with-ui up -d
+
+# Access Attu at: http://localhost:8080
+```
 
 ### 3. Load Initial Data
 
@@ -183,8 +196,11 @@ make api-test-all
 ### Service Management
 
 ```bash
-# Start all services
+# Start all services (without UI)
 make services-up
+
+# Start all services with Milvus UI (Attu)
+make services-up-ui
 
 # Stop all services
 make services-down
