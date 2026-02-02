@@ -153,6 +153,7 @@ secrets/
 .scala-build/
 .ammonite/
 metals.sbt
+.cursor/
 
 # =============================================================================
 # Generated Files
