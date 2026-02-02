@@ -918,109 +918,23 @@ Provide a brief, clear explanation."""),
                                     break
                         
                         if where_close_pos is not None:
-                            # #region agent log
-                            import json
-                            with open('/Users/manu/Documents/repos/contract-jena/.cursor/debug.log', 'a') as f:
-                                f.write(json.dumps({
-                                    'sessionId': 'debug-session',
-                                    'runId': 'run1',
-                                    'hypothesisId': 'A',
-                                    'location': 'sparql_generator.py:353',
-                                    'message': 'Before splitting query',
-                                    'data': {
-                                        'where_brace_pos': where_brace_pos,
-                                        'where_close_pos': where_close_pos,
-                                        'query_length': len(final_query),
-                                        'query_end_preview': final_query[max(0, where_close_pos-50):where_close_pos+10]
-                                    },
-                                    'timestamp': __import__('time').time() * 1000
-                                }) + '\n')
-                            # #endregion
-                            
                             # Split query into parts
                             prefix = final_query[:where_brace_pos + 1]  # Up to and including "WHERE {"
                             where_body = final_query[where_brace_pos + 1:where_close_pos]  # Content inside WHERE
                             suffix = final_query[where_close_pos + 1:]  # Everything after closing }
                             
-                            # #region agent log
-                            with open('/Users/manu/Documents/repos/contract-jena/.cursor/debug.log', 'a') as f:
-                                f.write(json.dumps({
-                                    'sessionId': 'debug-session',
-                                    'runId': 'run1',
-                                    'hypothesisId': 'B',
-                                    'location': 'sparql_generator.py:360',
-                                    'message': 'After splitting query parts',
-                                    'data': {
-                                        'prefix_end': repr(prefix[-30:]),
-                                        'where_body_preview': repr(where_body[:50]),
-                                        'where_body_end': repr(where_body[-30:]),
-                                        'suffix': repr(suffix),
-                                        'suffix_length': len(suffix)
-                                    },
-                                    'timestamp': __import__('time').time() * 1000
-                                }) + '\n')
-                            # #endregion
-                            
                             # Clean and wrap
                             body_clean = where_body.strip()
-                            
-                            # #region agent log
-                            with open('/Users/manu/Documents/repos/contract-jena/.cursor/debug.log', 'a') as f:
-                                f.write(json.dumps({
-                                    'sessionId': 'debug-session',
-                                    'runId': 'run1',
-                                    'hypothesisId': 'C',
-                                    'location': 'sparql_generator.py:375',
-                                    'message': 'Before reconstruction',
-                                    'data': {
-                                        'body_clean_preview': repr(body_clean[:50]),
-                                        'body_clean_end': repr(body_clean[-30:]),
-                                        'graph_uri': graph_uri
-                                    },
-                                    'timestamp': __import__('time').time() * 1000
-                                }) + '\n')
-                            # #endregion
                             
                             # Reconstruct: WHERE { GRAPH <uri> { body } }
                             graph_open = "\n  GRAPH <" + graph_uri + "> {\n    "
                             graph_close = "\n  }\n"
                             where_close = "}"
                             
-                            # Debug: Print to stderr so we can see it
-                            import sys
-                            print(f"DEBUG: prefix ends with: {repr(prefix[-30:])}", file=sys.stderr)
-                            print(f"DEBUG: body_clean ends with: {repr(body_clean[-30:])}", file=sys.stderr)
-                            print(f"DEBUG: suffix = {repr(suffix)}", file=sys.stderr)
-                            print(f"DEBUG: graph_close = {repr(graph_close)}", file=sys.stderr)
-                            print(f"DEBUG: where_close = {repr(where_close)}", file=sys.stderr)
-                            
                             # Build parts separately to verify
                             part1 = prefix + graph_open + body_clean
                             part2 = graph_close + where_close + suffix
                             final_query = part1 + part2
-                            
-                            print(f"DEBUG: After reconstruction - Opens: {final_query.count('{')}, Closes: {final_query.count('}')}", file=sys.stderr)
-                            print(f"DEBUG: Query ends with: {repr(final_query[-100:])}", file=sys.stderr)
-                            
-                            # #region agent log
-                            with open('/Users/manu/Documents/repos/contract-jena/.cursor/debug.log', 'a') as f:
-                                f.write(json.dumps({
-                                    'sessionId': 'debug-session',
-                                    'runId': 'run1',
-                                    'hypothesisId': 'D',
-                                    'location': 'sparql_generator.py:395',
-                                    'message': 'After reconstruction',
-                                    'data': {
-                                        'opens': final_query.count('{'),
-                                        'closes': final_query.count('}'),
-                                        'query_end': repr(final_query[-150:]),
-                                        'graph_open': repr(graph_open),
-                                        'graph_close': repr(graph_close),
-                                        'where_close': repr(where_close)
-                                    },
-                                    'timestamp': __import__('time').time() * 1000
-                                }) + '\n')
-                            # #endregion
                             
                             # Verify braces are balanced
                             opens = final_query.count('{')
