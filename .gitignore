@@ -1,0 +1,186 @@
+# =============================================================================
+# Contract Knowledge Graph - Git Ignore
+# =============================================================================
+
+# =============================================================================
+# Java / Maven
+# =============================================================================
+target/
+*.class
+*.jar
+*.war
+*.ear
+*.log
+*.ctxt
+.mtj.tmp/
+*.jar
+*.war
+*.nar
+*.ear
+*.zip
+*.tar.gz
+*.rar
+hs_err_pid*
+replay_pid*
+
+# Maven
+pom.xml.tag
+pom.xml.releaseBackup
+pom.xml.versionsBackup
+pom.xml.next
+release.properties
+dependency-reduced-pom.xml
+buildNumber.properties
+.mvn/timing.properties
+.mvn/wrapper/maven-wrapper.jar
+
+# IDE - Eclipse
+.project
+.classpath
+.settings/
+bin/
+
+# IDE - IntelliJ IDEA
+.idea/
+*.iml
+*.ipr
+*.iws
+out/
+.idea_modules/
+
+# IDE - VS Code
+.vscode/
+*.code-workspace
+
+# =============================================================================
+# Python
+# =============================================================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+.env
+
+# Pytest
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+
+# Mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Ruff
+.ruff_cache/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# =============================================================================
+# Data & Logs
+# =============================================================================
+data/
+logs/
+agents/data/generated/
+agents/logs/
+*.log
+*.tmp
+
+# TDB2 database files
+*.tdb
+*.tdb.lock
+tdb.lock
+
+# ChromaDB
+chroma/
+
+# =============================================================================
+# Docker
+# =============================================================================
+docker-compose.override.yml
+
+# =============================================================================
+# OS Files
+# =============================================================================
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# =============================================================================
+# Secrets
+# =============================================================================
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+secrets/
+
+# =============================================================================
+# Build Tools & IDE
+# =============================================================================
+.bloop/
+.metals/
+.scala-build/
+.ammonite/
+metals.sbt
+
+# =============================================================================
+# Generated Files
+# =============================================================================
+agents/data/generated/
+agents/logs/
+*.ttl.bak
+*.owl.bak
+
+# =============================================================================
+# Documentation - Standalone Files (Not for MkDocs)
+# =============================================================================
+# Keep only MkDocs structure (docs/guide/, docs/api/, etc.)
+# Ignore standalone documentation files
+docs/README.md
+docs/LANGGRAPH_PHOENIX_INTEGRATION.md
+docs/PHOENIX_DATASETS_EXPERIMENTS_GUIDE.md
+docs/00_readme/
+docs/01_quickstart/
+docs/02_architecture/
+docs/04_schema_evolution/
+docs/05_retrieval_rag/
+docs/09_analysis/
+
+# =============================================================================
+# Temporary Files
+# =============================================================================
+*.swp
+*.swo
+*~
+.cache/

@@ -1,0 +1,130 @@
+site_name: Contract Knowledge Graph
+site_description: Semantic Knowledge Graph for Procurement Contract Analysis
+site_author: Contract-Jena Team
+site_url: https://contract-jena.github.io/
+
+repo_name: contract-jena
+repo_url: https://github.com/your-org/contract-jena
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  palette:
+    # Light mode
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    # Dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - navigation.sections
+    - navigation.expand
+    - navigation.path
+    - navigation.top
+    - search.suggest
+    - search.highlight
+    - search.share
+    - toc.follow
+    - content.code.copy
+    - content.code.annotate
+  
+  icon:
+    repo: fontawesome/brands/github
+    edit: material/pencil
+    view: material/eye
+
+plugins:
+  - search:
+      lang: en
+
+markdown_extensions:
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - admonition
+  - pymdownx.details
+  - attr_list
+  - md_in_html
+  - def_list
+  - tables
+  - footnotes
+  - toc:
+      permalink: true
+      toc_depth: 3
+
+nav:
+  - Home: index.md
+  - Getting Started:
+    - Quick Start: getting-started/quickstart.md
+    - Installation: getting-started/installation.md
+    - Configuration: getting-started/configuration.md
+  - Architecture:
+    - Overview: architecture/overview.md
+    - Apache Jena: architecture/jena.md
+    - Multi-Agent System: architecture/agents.md
+    - Hybrid RAG: architecture/hybrid-rag.md
+    - Knowledge Graph: architecture/knowledge-graph.md
+    - Performance Optimizations: architecture/performance.md
+  - User Guide:
+    - Document Ingestion: guide/ingestion.md
+    - Ingestion Pipeline Deep Dive: guide/ingestion-pipeline-deep-dive.md
+    - Example Extractions: guide/example-extractions.md
+    - Query & Retrieval: guide/retrieval.md
+    - Schema Evolution: guide/schema-evolution.md
+    - Observability: guide/observability.md
+  - API Reference:
+    - Agents:
+      - Ingestion: api/agents/ingestion.md
+      - Retrieval: api/agents/retrieval.md
+      - Schema Evolution: api/agents/schema-evolution.md
+    - Storage:
+      - SPARQL Store: api/storage/sparql.md
+      - Vector Store: api/storage/vector.md
+    - LLM Providers: api/llm/providers.md
+  - Development:
+    - Contributing: development/contributing.md
+    - Testing: development/testing.md
+    - Deployment: development/deployment.md
+  - Performance:
+    - Benchmarks: performance/benchmarks.md
+    - Optimization Guide: performance/optimizations.md
+    - Scaling: performance/scaling.md
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/your-org/contract-jena
+  version:
+    provider: mike
+
+

@@ -1,0 +1,32 @@
+@prefix :        <http://jena.apache.org/text#> .
+@prefix tdb:     <http://jena.hpl.hp.com/2008/tdb#> .
+@prefix rdf:     <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs:    <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix proc:    <http://procurement.kg/ontology#> .
+
+[]  rdf:type :TextIndexDataset ;
+    :dataset <#dataset> ;
+    :index <#indexLucene> .
+
+<#dataset> rdf:type tdb:DatasetTDB ;
+    tdb:location "/fuseki/databases/contracts" ;
+    tdb:unionDefaultGraph true .
+
+<#indexLucene> a :TextIndex ;
+    :directory <file:lucene> ;
+    :entityMap <#entMap> ;
+    :storeValues true ;
+    :multilingual true ;
+    :analyzer :StandardAnalyzer .
+
+<#entMap> a :EntityMap ;
+    :entityField      "uri" ;
+    :defaultField     "text" ;
+    :map (
+         [ :field "text" ;
+           :predicate proc:rawText ]
+         [ :field "summary" ;
+           :predicate proc:summary ]
+         [ :field "keyPoint" ;
+           :predicate proc:hasKeyPoint ]
+    ) .

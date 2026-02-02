@@ -1,0 +1,195 @@
+# Medium Complexity Test Cases grounded in actual ingested documents
+# Analytical queries combining multiple clauses, jurisdictions, and contract relationships
+# Based on real data: Participation Attachment contracts, New Zealand/Hong Kong jurisdictions
+
+test_cases:
+  - id: "jurisdiction_distribution"
+    name: "Jurisdiction Distribution Analysis"
+    question: "How many contracts are governed by each jurisdiction, and which jurisdictions are most common?"
+    description: "Analyzes jurisdiction distribution across contracts (New Zealand, Hong Kong)"
+    category: "analytical"
+    level: "medium"
+    expected_keywords:
+      - "jurisdiction"
+      - "govern"
+      - "contract"
+    expected_keywords_any:
+      - "New Zealand"
+      - "NewZealand"
+      - "Hong Kong"
+      - "HongKong"
+      - "3"
+      - "2"
+    min_confidence: 0.40
+    min_kg_facts: 2
+    expected_sparql_patterns:
+      - "proc:governedBy"
+    tags:
+      - "jurisdiction"
+      - "distribution"
+      - "analytical"
+
+  - id: "clause_type_coverage"
+    name: "Clause Type Coverage Analysis"
+    question: "What types of clauses are present across all contracts, and which clause types are most common?"
+    description: "Analyzes clause type distribution (TerminationClause, GoverningLawClause, LiabilityClause, etc.)"
+    category: "analytical"
+    level: "medium"
+    expected_keywords:
+      - "clause"
+      - "type"
+    expected_keywords_any:
+      - "TerminationClause"
+      - "GoverningLawClause"
+      - "LiabilityClause"
+      - "GeneralClause"
+      - "IntellectualPropertyClause"
+    min_confidence: 0.40
+    min_kg_facts: 3
+    expected_sparql_patterns:
+      - "proc:Clause"
+      - "a proc:"
+    tags:
+      - "clauses"
+      - "coverage"
+      - "analytical"
+
+  - id: "contract_clause_relationships"
+    name: "Contract-Clause Relationships"
+    question: "Which contracts have the most clauses, and what types of clauses do they contain?"
+    description: "Analyzes contract-clause relationships and clause diversity per contract"
+    category: "analytical"
+    level: "medium"
+    expected_keywords:
+      - "contract"
+      - "clause"
+      - "relationship"
+    expected_keywords_any:
+      - "Participation Attachment"
+      - "hasClause"
+      - "TerminationClause"
+      - "GoverningLawClause"
+    min_confidence: 0.40
+    min_kg_facts: 3
+    expected_sparql_patterns:
+      - "proc:hasClause"
+    tags:
+      - "relationships"
+      - "clauses"
+      - "analytical"
+
+  - id: "party_contract_mapping"
+    name: "Party-Contract Mapping"
+    question: "Which parties are involved in which contracts, and what are their roles?"
+    description: "Maps parties (IBM, CBRE, etc.) to contracts and identifies their roles"
+    category: "analytical"
+    level: "medium"
+    expected_keywords:
+      - "party"
+      - "contract"
+      - "role"
+    expected_keywords_any:
+      - "IBM"
+      - "CBRE"
+      - "Participation Attachment"
+      - "hasParty"
+    min_confidence: 0.35
+    min_kg_facts: 2
+    expected_sparql_patterns:
+      - "proc:hasParty"
+    tags:
+      - "parties"
+      - "relationships"
+      - "analytical"
+
+  - id: "termination_clause_analysis"
+    name: "Termination Clause Analysis"
+    question: "Analyze termination clauses across contracts: which contracts have them, and what are their characteristics?"
+    description: "Analyzes termination clauses presence and characteristics across contracts"
+    category: "analytical"
+    level: "medium"
+    expected_keywords:
+      - "termination"
+      - "clause"
+    expected_keywords_any:
+      - "TerminationClause"
+      - "termination"
+      - "notice"
+    min_confidence: 0.40
+    min_kg_facts: 2
+    min_vector_results: 1
+    expected_sparql_patterns:
+      - "proc:TerminationClause"
+    tags:
+      - "termination"
+      - "clauses"
+      - "analysis"
+
+  - id: "governing_law_analysis"
+    name: "Governing Law and Jurisdiction Analysis"
+    question: "What governing law clauses exist in the contracts, and how do they relate to the contract jurisdictions?"
+    description: "Analyzes governing law clauses and their relationship to contract jurisdictions"
+    category: "analytical"
+    level: "medium"
+    expected_keywords:
+      - "governing"
+      - "law"
+      - "jurisdiction"
+    expected_keywords_any:
+      - "GoverningLawClause"
+      - "New Zealand"
+      - "Hong Kong"
+      - "governedBy"
+    min_confidence: 0.40
+    min_kg_facts: 2
+    expected_sparql_patterns:
+      - "proc:GoverningLawClause"
+      - "proc:governedBy"
+    tags:
+      - "governing-law"
+      - "jurisdiction"
+      - "analytical"
+
+  - id: "liability_clause_coverage"
+    name: "Liability Clause Coverage"
+    question: "Which contracts contain liability clauses, and what types of liability provisions do they include?"
+    description: "Analyzes liability clause presence and types across contracts"
+    category: "analytical"
+    level: "medium"
+    expected_keywords:
+      - "liability"
+      - "clause"
+    expected_keywords_any:
+      - "LiabilityClause"
+      - "liability"
+    min_confidence: 0.40
+    min_kg_facts: 1
+    expected_sparql_patterns:
+      - "proc:LiabilityClause"
+    tags:
+      - "liability"
+      - "clauses"
+      - "analytical"
+
+  - id: "intellectual_property_analysis"
+    name: "Intellectual Property Clause Analysis"
+    question: "What intellectual property clauses exist in the contracts, and how do they protect IP rights?"
+    description: "Analyzes intellectual property clauses and their provisions"
+    category: "analytical"
+    level: "medium"
+    expected_keywords:
+      - "intellectual"
+      - "property"
+      - "IP"
+    expected_keywords_any:
+      - "IntellectualPropertyClause"
+      - "intellectual property"
+      - "IP"
+    min_confidence: 0.40
+    min_kg_facts: 1
+    expected_sparql_patterns:
+      - "proc:IntellectualPropertyClause"
+    tags:
+      - "intellectual-property"
+      - "clauses"
+      - "analytical"

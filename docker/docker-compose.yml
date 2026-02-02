@@ -1,0 +1,221 @@
+# Contract Knowledge Graph - Docker Compose
+#
+# Services:
+# - fuseki: Apache Jena Fuseki SPARQL server
+# - milvus: Vector database for RAG (with etcd and minio dependencies)
+# - (optional) ollama: Local LLM for development
+
+services:
+  # Apache Jena Fuseki SPARQL Server with Text Indexing
+  fuseki:
+    image: stain/jena-fuseki:latest
+    container_name: contract-kg-fuseki
+    ports:
+      - "3030:3030"
+    environment:
+      - ADMIN_PASSWORD=admin123
+      - JVM_ARGS=-Xmx2g -Djena.text.lucene.version=LUCENE_9
+    volumes:
+      - fuseki-data:/fuseki
+      - ../ontology:/staging/ontology:ro
+      - ../rules:/staging/rules:ro
+      - ../docker/fuseki-config.ttl:/staging/fuseki-config.ttl:ro
+    networks:
+      - contract-kg-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3030/$/ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+  # Milvus Dependencies - etcd
+  etcd:
+    image: quay.io/coreos/etcd:v3.5.5
+    container_name: contract-kg-etcd
+    environment:
+      - ETCD_AUTO_COMPACTION_MODE=revision
+      - ETCD_AUTO_COMPACTION_RETENTION=1000
+      - ETCD_QUOTA_BACKEND_BYTES=4294967296
+      - ETCD_SNAPSHOT_COUNT=50000
+    volumes:
+      - etcd-data:/etcd
+    command: etcd -advertise-client-urls=http://127.0.0.1:2379 -listen-client-urls http://0.0.0.0:2379 --data-dir /etcd
+    networks:
+      - contract-kg-network
+    healthcheck:
+      test: ["CMD", "etcdctl", "endpoint", "health"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+    restart: unless-stopped
+
+  # Milvus Dependencies - MinIO (S3-compatible storage)
+  minio:
+    image: minio/minio:RELEASE.2023-03-20T20-16-18Z
+    container_name: contract-kg-minio
+    environment:
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin
+    ports:
+      - "9001:9001"
+      - "9000:9000"
+    volumes:
+      - minio-data:/minio_data
+    command: minio server /minio_data --console-address ":9001"
+    networks:
+      - contract-kg-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+    restart: unless-stopped
+
+  # Milvus Vector Database
+  milvus:
+    image: milvusdb/milvus:v2.3.4
+    container_name: contract-kg-milvus
+    command: ["milvus", "run", "standalone"]
+    environment:
+      ETCD_ENDPOINTS: etcd:2379
+      MINIO_ADDRESS: minio:9000
+    ports:
+      - "19530:19530"
+      - "9091:9091"
+    volumes:
+      - milvus-data:/var/lib/milvus
+    networks:
+      - contract-kg-network
+    depends_on:
+      - etcd
+      - minio
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9091/healthz"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+    restart: unless-stopped
+
+  # Attu - Milvus Web UI (optional but helpful)
+  attu:
+    image: zilliz/attu:v2.3.5
+    container_name: contract-kg-attu
+    ports:
+      - "8080:3000"
+    environment:
+      - MILVUS_URL=milvus:19530
+    networks:
+      - contract-kg-network
+    depends_on:
+      - milvus
+    profiles:
+      - with-ui
+    restart: unless-stopped
+
+  # Ollama - Local LLM (works on CPU, faster with GPU)
+  ollama:
+    image: ollama/ollama:latest
+    container_name: contract-kg-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-data:/root/.ollama
+    networks:
+      - contract-kg-network
+    environment:
+      - OLLAMA_HOST=0.0.0.0
+    restart: unless-stopped
+
+  # Phoenix - LLM Observability Platform
+  phoenix:
+    image: arizephoenix/phoenix:latest
+    container_name: contract-kg-phoenix
+    ports:
+      - "6006:6006" # Phoenix UI
+      - "4317:4317" # OTLP gRPC endpoint
+      - "4318:4318" # OTLP HTTP endpoint
+    volumes:
+      - phoenix-data:/phoenix/data
+    environment:
+      - PHOENIX_WORKING_DIR=/phoenix/data
+      - PHOENIX_PORT=6006
+      - PHOENIX_GRPC_PORT=4317
+      - PHOENIX_HOST=0.0.0.0
+    networks:
+      - contract-kg-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:6006/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    restart: unless-stopped
+
+  # MkDocs - Documentation Server
+  mkdocs:
+    image: squidfunk/mkdocs-material:latest
+    container_name: contract-kg-docs
+    ports:
+      - "8000:8000"
+    volumes:
+      - ../:/docs
+    command: serve --dev-addr=0.0.0.0:8000
+    networks:
+      - contract-kg-network
+    restart: unless-stopped
+
+  # Agents API - FastAPI service for ingestion and retrieval
+  agents-api:
+    build:
+      context: ../agents
+      dockerfile: Dockerfile
+    container_name: contract-kg-agents-api
+    ports:
+      - "8001:8000"
+    env_file:
+      - ../agents/.env
+    environment:
+      - FUSEKI_URL=http://fuseki:3030
+      - MILVUS_HOST=milvus
+      - MILVUS_PORT=19530
+      - PHOENIX_COLLECTOR_ENDPOINT=http://phoenix:4317
+      - PHOENIX_ENABLED=true
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - ../agents/logs:/app/logs
+      - ../agents/checkpoints:/app/checkpoints
+      - ../examples:/app/data:ro
+    networks:
+      - contract-kg-network
+    depends_on:
+      - fuseki
+      - milvus
+      - phoenix
+      - ollama
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    restart: unless-stopped
+
+networks:
+  contract-kg-network:
+    driver: bridge
+
+volumes:
+  fuseki-data:
+    driver: local
+  etcd-data:
+    driver: local
+  minio-data:
+    driver: local
+  milvus-data:
+    driver: local
+  ollama-data:
+    driver: local
+  phoenix-data:
+    driver: local

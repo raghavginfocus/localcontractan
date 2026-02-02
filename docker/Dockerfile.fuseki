@@ -1,0 +1,22 @@
+# Custom Fuseki image with pre-loaded ontology and configuration
+FROM stain/jena-fuseki:4.10.0
+
+# Copy ontology files
+COPY ontology/ /staging/ontology/
+
+# Copy reasoning rules
+COPY rules/ /staging/rules/
+
+# Copy initialization script
+COPY docker/init-fuseki.sh /docker-entrypoint-init.d/
+
+# Set permissions
+USER root
+RUN chmod +x /docker-entrypoint-init.d/init-fuseki.sh
+USER fuseki
+
+# Environment
+ENV ADMIN_PASSWORD=admin123
+ENV JVM_ARGS="-Xmx2g -Xms512m"
+
+EXPOSE 3030

@@ -1,0 +1,237 @@
+# =============================================================================
+# Jena Inference Rules for Contract Risk Analysis
+# =============================================================================
+# These rules are applied by the ReasoningAgent to infer new facts
+# from the existing knowledge graph data.
+# =============================================================================
+
+@prefix proc: <http://procurement.kg/ontology#> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+# =============================================================================
+# TERMINATION RISK RULES
+# =============================================================================
+
+# High termination risk: notice period < 30 days
+[HighTerminationRisk:
+    (?clause rdf:type proc:TerminationClause)
+    (?clause proc:noticePeriod ?days)
+    lessThan(?days, 30)
+    ->
+    (?clause proc:hasRiskLevel proc:HighTerminationRisk)
+]
+
+# Medium termination risk: 30 <= notice period < 60 days
+[MediumTerminationRisk:
+    (?clause rdf:type proc:TerminationClause)
+    (?clause proc:noticePeriod ?days)
+    ge(?days, 30)
+    lessThan(?days, 60)
+    ->
+    (?clause proc:hasRiskLevel proc:MediumTerminationRisk)
+]
+
+# Low termination risk: notice period >= 60 days
+[LowTerminationRisk:
+    (?clause rdf:type proc:TerminationClause)
+    (?clause proc:noticePeriod ?days)
+    ge(?days, 60)
+    ->
+    (?clause proc:hasRiskLevel proc:LowTerminationRisk)
+]
+
+# =============================================================================
+# CONTRACT VALUE RULES
+# =============================================================================
+
+# High-value contract: value > 1,000,000
+[HighValueContract:
+    (?contract rdf:type proc:Contract)
+    (?contract proc:contractValue ?value)
+    greaterThan(?value, 1000000)
+    ->
+    (?contract proc:isHighValue "true"^^xsd:boolean)
+]
+
+# Medium-value contract: 100,000 < value <= 1,000,000
+[MediumValueContract:
+    (?contract rdf:type proc:Contract)
+    (?contract proc:contractValue ?value)
+    greaterThan(?value, 100000)
+    le(?value, 1000000)
+    ->
+    (?contract proc:isMediumValue "true"^^xsd:boolean)
+]
+
+# =============================================================================
+# PAYMENT RISK RULES
+# =============================================================================
+
+# Late payment risk: payment terms > 60 days
+[LatePaymentRisk:
+    (?clause rdf:type proc:PaymentClause)
+    (?clause proc:paymentDays ?days)
+    greaterThan(?days, 60)
+    ->
+    (?clause proc:hasRisk proc:LatePaymentRisk)
+]
+
+# Standard payment: 30-60 days
+[StandardPaymentTerms:
+    (?clause rdf:type proc:PaymentClause)
+    (?clause proc:paymentDays ?days)
+    ge(?days, 30)
+    le(?days, 60)
+    ->
+    (?clause proc:hasPaymentTermsType proc:StandardPayment)
+]
+
+# Quick payment: < 30 days
+[QuickPaymentTerms:
+    (?clause rdf:type proc:PaymentClause)
+    (?clause proc:paymentDays ?days)
+    lessThan(?days, 30)
+    ->
+    (?clause proc:hasPaymentTermsType proc:QuickPayment)
+]
+
+# =============================================================================
+# PENALTY RISK RULES
+# =============================================================================
+
+# Excessive penalty: penalty percentage > 10%
+[ExcessivePenalty:
+    (?clause rdf:type proc:PenaltyClause)
+    (?clause proc:penaltyPercentage ?pct)
+    greaterThan(?pct, 10)
+    ->
+    (?clause proc:hasRisk proc:ExcessivePenaltyRisk)
+]
+
+# High penalty: 5% < penalty percentage <= 10%
+[HighPenalty:
+    (?clause rdf:type proc:PenaltyClause)
+    (?clause proc:penaltyPercentage ?pct)
+    greaterThan(?pct, 5)
+    le(?pct, 10)
+    ->
+    (?clause proc:hasPenaltyLevel proc:HighPenalty)
+]
+
+# =============================================================================
+# COMPLIANCE RULES
+# =============================================================================
+
+# EU compliance issue: EU jurisdiction + short notice period
+[EUTerminationCompliance:
+    (?contract rdf:type proc:Contract)
+    (?contract proc:governedBy proc:EU)
+    (?contract proc:hasClause ?clause)
+    (?clause rdf:type proc:TerminationClause)
+    (?clause proc:noticePeriod ?days)
+    lessThan(?days, 30)
+    ->
+    (?contract proc:hasComplianceIssue proc:EUTerminationNotice)
+]
+
+# UK compliance issue: UK jurisdiction + short notice period
+[UKTerminationCompliance:
+    (?contract rdf:type proc:Contract)
+    (?contract proc:governedBy proc:UK)
+    (?contract proc:hasClause ?clause)
+    (?clause rdf:type proc:TerminationClause)
+    (?clause proc:noticePeriod ?days)
+    lessThan(?days, 30)
+    ->
+    (?contract proc:hasComplianceIssue proc:UKTerminationNotice)
+]
+
+# =============================================================================
+# SUBCLASS INFERENCE
+# =============================================================================
+
+# All specific clause types are also Clauses
+[TerminationIsClause:
+    (?clause rdf:type proc:TerminationClause)
+    ->
+    (?clause rdf:type proc:Clause)
+]
+
+[PaymentIsClause:
+    (?clause rdf:type proc:PaymentClause)
+    ->
+    (?clause rdf:type proc:Clause)
+]
+
+[PenaltyIsClause:
+    (?clause rdf:type proc:PenaltyClause)
+    ->
+    (?clause rdf:type proc:Clause)
+]
+
+[ConfidentialityIsClause:
+    (?clause rdf:type proc:ConfidentialityClause)
+    ->
+    (?clause rdf:type proc:Clause)
+]
+
+[IndemnificationIsClause:
+    (?clause rdf:type proc:IndemnificationClause)
+    ->
+    (?clause rdf:type proc:Clause)
+]
+
+[GoverningLawIsClause:
+    (?clause rdf:type proc:GoverningLawClause)
+    ->
+    (?clause rdf:type proc:Clause)
+]
+
+# Buyer and Supplier are Parties
+[BuyerIsParty:
+    (?party rdf:type proc:Buyer)
+    ->
+    (?party rdf:type proc:Party)
+]
+
+[SupplierIsParty:
+    (?party rdf:type proc:Supplier)
+    ->
+    (?party rdf:type proc:Party)
+]
+
+# =============================================================================
+# OBLIGATION DERIVATION
+# =============================================================================
+
+# Payment clause creates payment obligation
+[PaymentClauseCreatesObligation:
+    (?contract rdf:type proc:Contract)
+    (?contract proc:hasClause ?clause)
+    (?clause rdf:type proc:PaymentClause)
+    (?contract proc:hasParty ?buyer)
+    (?buyer rdf:type proc:Buyer)
+    ->
+    (?clause proc:createsObligation ?buyer)
+]
+
+# =============================================================================
+# CONTRACT STATUS INFERENCE
+# =============================================================================
+
+# Contract has risks if any clause has risks
+[ContractHasRisks:
+    (?contract proc:hasClause ?clause)
+    (?clause proc:hasRiskLevel ?risk)
+    ->
+    (?contract proc:hasAssociatedRisk ?risk)
+]
+
+# Contract has compliance issues
+[ContractHasHighRisk:
+    (?contract proc:hasAssociatedRisk proc:HighTerminationRisk)
+    ->
+    (?contract proc:riskStatus proc:HighRiskContract)
+]

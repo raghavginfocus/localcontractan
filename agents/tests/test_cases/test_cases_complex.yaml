@@ -1,0 +1,246 @@
+# Complex Test Cases grounded in actual ingested documents
+# Multi-hop, risk, and ontology-aware reasoning over RDF triples
+# Based on real data: Participation Attachment contracts, multiple clause types, jurisdictions
+
+test_cases:
+  - id: "comprehensive_risk_profile"
+    name: "Comprehensive Risk Profile Analysis"
+    question: "Assess the overall risk profile for each contract by analyzing termination clauses, governing jurisdictions, liability clauses, and intellectual property protections."
+    description: "Multi-factor risk analysis combining termination clauses, jurisdictions (New Zealand vs Hong Kong), liability clauses, and IP protections"
+    category: "risk"
+    level: "complex"
+    expected_keywords:
+      - "risk"
+      - "contract"
+      - "analysis"
+    expected_keywords_any:
+      - "termination"
+      - "jurisdiction"
+      - "liability"
+      - "intellectual property"
+      - "New Zealand"
+      - "Hong Kong"
+    min_confidence: 0.45
+    min_kg_facts: 3
+    min_vector_results: 2
+    expected_sparql_patterns:
+      - "proc:TerminationClause"
+      - "proc:governedBy"
+      - "proc:LiabilityClause"
+    tags:
+      - "risk"
+      - "multi-hop"
+      - "ORIGINAL_FAILURE"
+
+  - id: "cross_contract_pattern_analysis"
+    name: "Cross-Contract Pattern Analysis"
+    question: "Identify patterns across contracts: which clause combinations are common, and which contracts have similar structures?"
+    description: "Analyzes patterns across contracts including clause combinations and structural similarities"
+    category: "analytical"
+    level: "complex"
+    expected_keywords:
+      - "pattern"
+      - "contract"
+      - "clause"
+    expected_keywords_any:
+      - "TerminationClause"
+      - "GoverningLawClause"
+      - "LiabilityClause"
+      - "similar"
+      - "common"
+    min_confidence: 0.40
+    min_kg_facts: 3
+    min_vector_results: 2
+    expected_sparql_patterns:
+      - "proc:hasClause"
+    tags:
+      - "patterns"
+      - "comparison"
+      - "multi-hop"
+
+  - id: "jurisdiction_clause_correlation"
+    name: "Jurisdiction-Clause Correlation Analysis"
+    question: "How do contract jurisdictions correlate with the types of clauses they contain? Are there jurisdiction-specific clause patterns?"
+    description: "Analyzes correlation between jurisdictions (New Zealand, Hong Kong) and clause types present"
+    category: "analytical"
+    level: "complex"
+    expected_keywords:
+      - "jurisdiction"
+      - "clause"
+      - "correlation"
+    expected_keywords_any:
+      - "New Zealand"
+      - "Hong Kong"
+      - "TerminationClause"
+      - "GoverningLawClause"
+      - "pattern"
+    min_confidence: 0.40
+    min_kg_facts: 3
+    expected_sparql_patterns:
+      - "proc:governedBy"
+      - "proc:hasClause"
+    tags:
+      - "jurisdiction"
+      - "correlation"
+      - "multi-hop"
+
+  - id: "contract_completeness_assessment"
+    name: "Contract Completeness Assessment"
+    question: "Assess the completeness of each contract by identifying which standard clause types are present and which are missing."
+    description: "Evaluates contract completeness by checking for standard clause types (termination, liability, IP, governing law, etc.)"
+    category: "analytical"
+    level: "complex"
+    expected_keywords:
+      - "completeness"
+      - "clause"
+      - "contract"
+    expected_keywords_any:
+      - "TerminationClause"
+      - "LiabilityClause"
+      - "GoverningLawClause"
+      - "IntellectualPropertyClause"
+      - "missing"
+      - "present"
+    min_confidence: 0.40
+    min_kg_facts: 3
+    expected_sparql_patterns:
+      - "proc:hasClause"
+      - "a proc:"
+    tags:
+      - "completeness"
+      - "assessment"
+      - "multi-hop"
+
+  - id: "party_relationship_network"
+    name: "Party Relationship Network Analysis"
+    question: "Map the network of relationships between contracts and parties: which parties appear in multiple contracts, and what roles do they play?"
+    description: "Analyzes party-contract network, identifying parties that appear in multiple contracts and their roles"
+    category: "analytical"
+    level: "complex"
+    expected_keywords:
+      - "party"
+      - "network"
+      - "relationship"
+    expected_keywords_any:
+      - "IBM"
+      - "CBRE"
+      - "Participation Attachment"
+      - "multiple"
+      - "role"
+    min_confidence: 0.40
+    min_kg_facts: 2
+    expected_sparql_patterns:
+      - "proc:hasParty"
+    tags:
+      - "parties"
+      - "network"
+      - "multi-hop"
+
+  - id: "clause_diversity_index"
+    name: "Clause Diversity Index"
+    question: "Calculate a diversity index for each contract based on the variety of clause types it contains, and rank contracts by clause diversity."
+    description: "Calculates and ranks contracts by clause type diversity (number of different clause types per contract)"
+    category: "analytical"
+    level: "complex"
+    expected_keywords:
+      - "diversity"
+      - "clause"
+      - "contract"
+    expected_keywords_any:
+      - "TerminationClause"
+      - "GoverningLawClause"
+      - "LiabilityClause"
+      - "variety"
+      - "rank"
+    min_confidence: 0.40
+    min_kg_facts: 3
+    expected_sparql_patterns:
+      - "proc:hasClause"
+      - "a proc:"
+    tags:
+      - "diversity"
+      - "ranking"
+      - "analytical"
+
+  - id: "standardization_opportunities"
+    name: "Contract Standardization Opportunities"
+    question: "Identify opportunities for standardizing contracts by finding common clause patterns and suggesting standard clause combinations."
+    description: "Identifies standardization opportunities based on common clause patterns across contracts"
+    category: "analytical"
+    level: "complex"
+    expected_keywords:
+      - "standardize"
+      - "pattern"
+      - "clause"
+    expected_keywords_any:
+      - "common"
+      - "pattern"
+      - "TerminationClause"
+      - "GoverningLawClause"
+      - "standard"
+    min_confidence: 0.40
+    min_kg_facts: 3
+    min_vector_results: 2
+    expected_sparql_patterns:
+      - "proc:hasClause"
+    tags:
+      - "standardization"
+      - "patterns"
+      - "multi-hop"
+
+  - id: "ontology_coverage_analysis"
+    name: "Ontology Coverage Analysis"
+    question: "Analyze which ontology classes and clause types are used across all contracts, and identify any gaps or missing expected clause types."
+    description: "Analyzes ontology coverage, identifying used clause types and potential gaps"
+    category: "analytical"
+    level: "complex"
+    expected_keywords:
+      - "ontology"
+      - "clause"
+      - "coverage"
+    expected_keywords_any:
+      - "TerminationClause"
+      - "GoverningLawClause"
+      - "LiabilityClause"
+      - "IntellectualPropertyClause"
+      - "GeneralClause"
+      - "missing"
+      - "gap"
+    min_confidence: 0.40
+    min_kg_facts: 3
+    expected_sparql_patterns:
+      - "a proc:"
+      - "proc:Clause"
+    tags:
+      - "ontology"
+      - "coverage"
+      - "analysis"
+
+  - id: "contract_similarity_clustering"
+    name: "Contract Similarity Clustering"
+    question: "Group contracts by similarity based on their clause types, jurisdictions, and party relationships. Which contracts are most similar?"
+    description: "Clusters contracts by similarity using clause types, jurisdictions, and party relationships"
+    category: "analytical"
+    level: "complex"
+    expected_keywords:
+      - "similarity"
+      - "contract"
+      - "clause"
+    expected_keywords_any:
+      - "similar"
+      - "group"
+      - "cluster"
+      - "TerminationClause"
+      - "GoverningLawClause"
+      - "New Zealand"
+      - "Hong Kong"
+    min_confidence: 0.40
+    min_kg_facts: 3
+    min_vector_results: 2
+    expected_sparql_patterns:
+      - "proc:hasClause"
+      - "proc:governedBy"
+    tags:
+      - "similarity"
+      - "clustering"
+      - "multi-hop"

@@ -1,0 +1,129 @@
+# Example Test Cases YAML File for Contract KG RAG Evaluation
+# 
+# This file demonstrates the format for defining test cases.
+# You can create your own test case files following this structure.
+
+test_cases:
+  # Simple Factual Query
+  - id: "contract_count"
+    name: "Contract Count Query"
+    question: "How many contracts do we have in our system?"
+    description: "Tests basic contract counting functionality"
+    category: "factual"
+    level: "simple"
+    expected_keywords:
+      - "contract"
+      - "contracts"
+    expected_keywords_any:
+      - "3"
+      - "14"
+      - "15"
+    min_confidence: 0.3
+    min_kg_facts: 1
+    tags:
+      - "basic"
+      - "count"
+
+  # Analytical Query
+  - id: "termination_analysis"
+    name: "Termination Terms Analysis"
+    question: "What are the termination notice periods in our contracts?"
+    description: "Tests analytical query requiring reasoning across multiple contracts"
+    category: "analytical"
+    level: "medium"
+    expected_keywords:
+      - "termination"
+      - "notice"
+      - "days"
+    expected_keywords_any:
+      - "15"
+      - "30"
+      - "period"
+    min_confidence: 0.4
+    min_vector_results: 2
+    expected_sparql_patterns:
+      - "TerminationClause"
+      - "noticePeriod"
+    tags:
+      - "termination"
+      - "analysis"
+
+  # Risk Assessment Query
+  - id: "risk_assessment"
+    name: "Termination Risk Assessment"
+    question: "What risks are associated with short termination notice periods?"
+    description: "Tests risk analysis and reasoning capabilities"
+    category: "risk"
+    level: "complex"
+    expected_keywords:
+      - "risk"
+      - "termination"
+      - "notice"
+    expected_keywords_any:
+      - "high"
+      - "low"
+      - "short"
+    min_confidence: 0.3
+    min_vector_results: 2
+    tags:
+      - "risk"
+      - "assessment"
+
+  # Compliance Query
+  - id: "confidentiality_compliance"
+    name: "Confidentiality Requirements"
+    question: "What are the confidentiality requirements in our contracts?"
+    description: "Tests compliance-related queries"
+    category: "compliance"
+    level: "medium"
+    expected_keywords:
+      - "confidential"
+      - "information"
+      - "disclosure"
+    forbidden_keywords:
+      - "public"
+      - "share"
+    min_confidence: 0.3
+    min_vector_results: 1
+    tags:
+      - "compliance"
+      - "confidentiality"
+
+  # Complex Multi-hop Query
+  - id: "cross_contract_patterns"
+    name: "Cross-Contract Pattern Analysis"
+    question: "Which contracts have similar payment terms and what are the differences?"
+    description: "Tests complex reasoning across multiple contracts"
+    category: "analytical"
+    level: "complex"
+    expected_keywords:
+      - "contract"
+      - "payment"
+      - "terms"
+    expected_keywords_any:
+      - "similar"
+      - "different"
+      - "compare"
+    min_confidence: 0.3
+    min_kg_facts: 2
+    min_vector_results: 3
+    tags:
+      - "multi-hop"
+      - "comparison"
+
+  # Query with Specific Graph
+  - id: "specific_document_query"
+    name: "Document-Specific Query"
+    question: "What are the key clauses in document doc_a23eed3e?"
+    description: "Tests querying a specific document graph"
+    category: "factual"
+    level: "simple"
+    graph_uri: "http://procurement.kg/contract#graph/doc_a23eed3e"
+    expected_keywords:
+      - "clause"
+      - "document"
+    expected_content:
+      - "doc_a23eed3e"
+    min_confidence: 0.3
+    tags:
+      - "document-specific"

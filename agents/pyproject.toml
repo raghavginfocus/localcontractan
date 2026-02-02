@@ -1,0 +1,109 @@
+[project]
+name = "contract-kg-agents"
+version = "1.0.0"
+description = "LLM Agents for Contract Knowledge Graph RAG System"
+readme = "README.md"
+requires-python = ">=3.11"
+license = {text = "MIT"}
+authors = [
+    {name = "Procurement KG Team"}
+]
+
+dependencies = [
+    # API Framework
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.32.0",
+    # LLM Frameworks
+    "langchain>=0.3.0",
+    "langchain-openai>=0.2.0",
+    "langchain-community>=0.3.0",
+    "langgraph>=0.2.0",
+    "langgraph-checkpoint>=1.0.0",
+    "langgraph-checkpoint-sqlite>=1.0.0",
+    "aiosqlite>=0.19.0",
+    # Observability - Phoenix
+    "arize-phoenix>=4.0.0",
+    "openinference-instrumentation-langchain>=0.1.0",
+    "opentelemetry-api>=1.20.0",
+    "opentelemetry-sdk>=1.20.0",
+    # Document Processing
+    "pdfplumber>=0.11.0",
+    "unstructured>=0.15.0",
+    "python-docx>=1.1.0",
+    "pytesseract>=0.3.10",
+    # RDF and SPARQL
+    "rdflib>=7.0.0",
+    "SPARQLWrapper>=2.0.0",
+    "pyfuseki>=1.6",
+    "pyshacl>=0.25.0",
+    # Vector Database - Milvus
+    "pymilvus>=2.3.0",
+    "sentence-transformers>=3.0.0",
+    # HTTP Client
+    "httpx>=0.27.0",
+    "aiohttp>=3.9.0",
+    # Message Queue & Caching
+    "redis>=5.0.0",
+    "aio-pika>=9.3.0",
+    "numpy>=1.26.0",
+    # Data Processing
+    "pydantic>=2.5.0",
+    "pydantic-settings>=2.1.0",
+    "pandas>=2.2.0",
+    # Utilities
+    "python-dotenv>=1.0.0",
+    "tenacity>=8.2.0",
+    "structlog>=24.1.0",
+    "langchain-ollama>=1.0.1",
+    "langchain-ibm>=0.3.0",
+    "pyyaml>=6.0.0",
+    # Async File I/O
+    "aiofiles>=24.1.0",
+    # System Monitoring
+    "psutil>=5.9.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "pytest-cov>=4.1.0",
+    "ruff>=0.3.0",
+    "mypy>=1.8.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/contract_kg"]
+
+[tool.uv]
+dev-dependencies = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "pytest-cov>=4.1.0",
+    "ruff>=0.3.0",
+    "mypy>=1.8.0",
+    "mkdocs-material>=9.7.1",
+    "mkdocstrings[python]>=1.0.2",
+    "mkdocs-mermaid2-plugin>=1.2.3",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP"]
+ignore = ["E501"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]

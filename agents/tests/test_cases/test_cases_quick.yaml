@@ -1,0 +1,128 @@
+# Quick Test Cases for Contract KG RAG Retrieval
+# One example from each category for fast evaluation
+
+test_cases:
+  # ===========================================
+  # SIMPLE FACTUAL QUERY
+  # ===========================================
+  
+  - id: "contract_count"
+    name: "Contract Count Query"
+    question: "How many contracts do we have in our system?"
+    description: "Tests basic contract counting functionality"
+    category: "factual"
+    level: "simple"
+    expected_keywords:
+      - "contract"
+      - "contracts"
+    expected_keywords_any:
+      - "22"
+      - "twenty"
+      - "document"
+    min_confidence: 0.3
+    min_kg_facts: 1
+    tags:
+      - "basic"
+      - "count"
+
+  # ===========================================
+  # ANALYTICAL QUERY (MEDIUM)
+  # ===========================================
+
+  - id: "termination_analysis"
+    name: "Termination Terms Analysis"
+    question: "What are the termination notice periods in our contracts?"
+    description: "Tests analytical query requiring reasoning across multiple contracts"
+    category: "analytical"
+    level: "medium"
+    expected_keywords:
+      - "termination"
+      - "notice"
+    expected_keywords_any:
+      - "days"
+      - "period"
+      - "30"
+      - "15"
+    min_confidence: 0.4
+    min_vector_results: 2
+    expected_sparql_patterns:
+      - "TerminationClause"
+      - "noticePeriod"
+    tags:
+      - "termination"
+      - "analysis"
+
+  # ===========================================
+  # RISK ASSESSMENT QUERY (COMPLEX)
+  # ===========================================
+
+  - id: "liability_risk_analysis"
+    name: "Liability Risk Analysis"
+    question: "Which contracts have the highest liability exposure? Are there any unlimited liability clauses?"
+    description: "Tests liability risk assessment across contracts"
+    category: "risk"
+    level: "complex"
+    expected_keywords:
+      - "liability"
+      - "risk"
+      - "exposure"
+    expected_keywords_any:
+      - "high"
+      - "unlimited"
+      - "cap"
+      - "limit"
+    min_confidence: 0.3
+    min_vector_results: 2
+    tags:
+      - "risk"
+      - "liability"
+
+  # ===========================================
+  # COMPLIANCE QUERY
+  # ===========================================
+
+  - id: "confidentiality_compliance"
+    name: "Confidentiality Requirements"
+    question: "What are the confidentiality requirements in our contracts?"
+    description: "Tests compliance-related queries"
+    category: "compliance"
+    level: "medium"
+    expected_keywords:
+      - "confidential"
+      - "information"
+      - "disclosure"
+    forbidden_keywords:
+      - "public"
+      - "share"
+    min_confidence: 0.3
+    min_vector_results: 1
+    tags:
+      - "compliance"
+      - "confidentiality"
+
+  # ===========================================
+  # COMPLEX MULTI-HOP QUERY (THE FAILING ONE)
+  # ===========================================
+
+  - id: "comprehensive_risk_profile"
+    name: "Comprehensive Risk Profile"
+    question: "Analyze the risk profile of our contracts. Consider termination conditions, liability terms, and any unusual clauses. Which contracts have the highest risk?"
+    description: "Tests multi-dimensional risk analysis - THIS WAS FAILING"
+    category: "risk"
+    level: "complex"
+    expected_keywords:
+      - "risk"
+      - "termination"
+      - "liability"
+    expected_keywords_any:
+      - "high"
+      - "low"
+      - "unusual"
+      - "concerning"
+    min_confidence: 0.3
+    min_kg_facts: 2
+    min_vector_results: 3
+    tags:
+      - "risk"
+      - "assessment"
+      - "multi-dimensional"

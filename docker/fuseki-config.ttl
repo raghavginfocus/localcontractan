@@ -1,0 +1,60 @@
+@prefix :        <http://jena.apache.org/text#> .
+@prefix fuseki:  <http://jena.apache.org/fuseki#> .
+@prefix rdf:     <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs:    <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix ja:      <http://jena.hpl.hp.com/2005/11/Assembler#> .
+@prefix tdb:     <http://jena.hpl.hp.com/2008/tdb#> .
+@prefix proc:    <http://procurement.kg/ontology#> .
+
+# Fuseki Server Configuration with Text Indexing
+[] rdf:type fuseki:Server ;
+   fuseki:services (
+     <#service_tdb2_text>
+   ) .
+
+# Service for contracts dataset with TDB2 + Text Index
+<#service_tdb2_text> rdf:type fuseki:Service ;
+    rdfs:label                      "Contract KG with Text Index" ;
+    fuseki:name                     "contracts" ;
+    fuseki:serviceQuery             "sparql" ;
+    fuseki:serviceQuery             "query" ;
+    fuseki:serviceUpdate            "update" ;
+    fuseki:serviceUpload            "upload" ;
+    fuseki:serviceReadWriteGraphStore "data" ;
+    fuseki:serviceReadGraphStore    "get" ;
+    fuseki:dataset                  <#dataset_text> ;
+    .
+
+# Text Index Dataset Configuration
+<#dataset_text> rdf:type :TextIndexDataset ;
+    :dataset <#dataset_tdb2> ;
+    :index <#indexLucene> .
+
+# TDB2 Dataset
+<#dataset_tdb2> rdf:type tdb:DatasetTDB ;
+    tdb:location "/fuseki/databases/contracts" ;
+    tdb:unionDefaultGraph true .
+
+# Lucene Text Index Configuration
+<#indexLucene> a :TextIndex ;
+    :directory <file:lucene> ;
+    :entityMap <#entMap> ;
+    :storeValues true ;
+    :multilingual true ;
+    :analyzer :StandardAnalyzer .
+
+# Entity Map: defines which properties are indexed
+<#entMap> a :EntityMap ;
+    :entityField      "uri" ;
+    :defaultField     "text" ;
+    :map (
+         # Index clause raw text (full clause content)
+         [ :field "text" ;
+           :predicate proc:rawText ]
+         # Index clause summaries (short summaries)
+         [ :field "summary" ;
+           :predicate proc:summary ]
+         # Index key points (bullet points)
+         [ :field "keyPoint" ;
+           :predicate proc:hasKeyPoint ]
+    ) .

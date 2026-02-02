@@ -1,0 +1,530 @@
+# Comprehensive Test Cases for Contract KG RAG Retrieval
+# 
+# Based on uploaded documents: doc_5f2580db, doc_b7de7bc9, doc_6296d16a, doc_8dc8f24a, 
+# doc_24e8b709, doc_487bec54, doc_9baac8d1
+#
+# Clause types found: NoticesClause, TerminationClause, LiabilityClause, ChoiceOfForumClause,
+# LimitationOfActionClause, GoverningLawClause, EthicalDealingsClause, IntellectualPropertyClause,
+# ConfidentialityClause
+
+test_cases:
+  # ===========================================
+  # SIMPLE FACTUAL QUERIES
+  # ===========================================
+  
+  - id: "contract_count"
+    name: "Contract Count Query"
+    question: "How many contracts do we have in our system?"
+    description: "Tests basic contract counting functionality"
+    category: "factual"
+    level: "simple"
+    expected_keywords:
+      - "contract"
+      - "contracts"
+    expected_keywords_any:
+      - "22"
+      - "twenty"
+      - "document"
+    min_confidence: 0.3
+    min_kg_facts: 1
+    tags:
+      - "basic"
+      - "count"
+
+  - id: "clause_types_list"
+    name: "List All Clause Types"
+    question: "What types of clauses are present in our contracts?"
+    description: "Tests ontology-based clause type discovery"
+    category: "factual"
+    level: "simple"
+    expected_keywords:
+      - "clause"
+      - "type"
+    expected_keywords_any:
+      - "Termination"
+      - "Confidentiality"
+      - "Liability"
+      - "GoverningLaw"
+      - "IntellectualProperty"
+    min_confidence: 0.3
+    min_kg_facts: 1
+    tags:
+      - "basic"
+      - "ontology"
+
+  - id: "confidentiality_clauses_count"
+    name: "Count Confidentiality Clauses"
+    question: "How many confidentiality clauses are in our contracts?"
+    description: "Tests specific clause type counting"
+    category: "factual"
+    level: "simple"
+    expected_keywords:
+      - "confidentiality"
+      - "clause"
+    expected_keywords_any:
+      - "4"
+      - "5"
+      - "6"
+    min_confidence: 0.3
+    min_kg_facts: 1
+    tags:
+      - "basic"
+      - "confidentiality"
+
+  # ===========================================
+  # ANALYTICAL QUERIES
+  # ===========================================
+
+  - id: "termination_analysis"
+    name: "Termination Terms Analysis"
+    question: "What are the termination notice periods in our contracts?"
+    description: "Tests analytical query requiring reasoning across multiple contracts"
+    category: "analytical"
+    level: "medium"
+    expected_keywords:
+      - "termination"
+      - "notice"
+    expected_keywords_any:
+      - "days"
+      - "period"
+      - "30"
+      - "15"
+    min_confidence: 0.4
+    min_vector_results: 2
+    expected_sparql_patterns:
+      - "TerminationClause"
+      - "noticePeriod"
+    tags:
+      - "termination"
+      - "analysis"
+
+  - id: "liability_terms"
+    name: "Liability Terms Analysis"
+    question: "What are the liability and indemnification terms across our contracts?"
+    description: "Tests liability clause extraction and analysis"
+    category: "analytical"
+    level: "medium"
+    expected_keywords:
+      - "liability"
+      - "indemnification"
+    expected_keywords_any:
+      - "cap"
+      - "limit"
+      - "unlimited"
+      - "damages"
+    min_confidence: 0.4
+    min_vector_results: 2
+    expected_sparql_patterns:
+      - "LiabilityClause"
+    tags:
+      - "liability"
+      - "analysis"
+
+  - id: "governing_law_jurisdiction"
+    name: "Governing Law and Jurisdiction"
+    question: "Which jurisdictions govern our contracts? Are there any contracts without clear jurisdiction?"
+    description: "Tests jurisdiction and governing law clause extraction"
+    category: "analytical"
+    level: "medium"
+    expected_keywords:
+      - "jurisdiction"
+      - "governing"
+      - "law"
+    expected_keywords_any:
+      - "state"
+      - "country"
+      - "court"
+      - "legal"
+    min_confidence: 0.4
+    min_vector_results: 1
+    expected_sparql_patterns:
+      - "GoverningLawClause"
+      - "ChoiceOfForumClause"
+    tags:
+      - "jurisdiction"
+      - "compliance"
+
+  - id: "intellectual_property_terms"
+    name: "Intellectual Property Terms"
+    question: "What are the intellectual property clauses in our contracts? Who owns the IP rights?"
+    description: "Tests IP clause extraction and ownership analysis"
+    category: "analytical"
+    level: "medium"
+    expected_keywords:
+      - "intellectual"
+      - "property"
+      - "IP"
+    expected_keywords_any:
+      - "ownership"
+      - "rights"
+      - "license"
+      - "patent"
+      - "copyright"
+    min_confidence: 0.4
+    min_vector_results: 1
+    expected_sparql_patterns:
+      - "IntellectualPropertyClause"
+    tags:
+      - "ip"
+      - "analysis"
+
+  - id: "ethical_dealings_clauses"
+    name: "Ethical Dealings Clauses"
+    question: "What ethical dealings and compliance requirements are specified in our contracts?"
+    description: "Tests ethical dealings clause extraction"
+    category: "analytical"
+    level: "medium"
+    expected_keywords:
+      - "ethical"
+      - "dealings"
+      - "compliance"
+    expected_keywords_any:
+      - "requirement"
+      - "standard"
+      - "practice"
+    min_confidence: 0.3
+    min_vector_results: 1
+    expected_sparql_patterns:
+      - "EthicalDealingsClause"
+    tags:
+      - "compliance"
+      - "ethics"
+
+  - id: "notices_clauses"
+    name: "Notice Requirements"
+    question: "What are the notice requirements and procedures in our contracts?"
+    description: "Tests notice clause extraction"
+    category: "analytical"
+    level: "medium"
+    expected_keywords:
+      - "notice"
+      - "notification"
+    expected_keywords_any:
+      - "written"
+      - "email"
+      - "mail"
+      - "procedure"
+    min_confidence: 0.3
+    min_vector_results: 1
+    expected_sparql_patterns:
+      - "NoticesClause"
+    tags:
+      - "notices"
+      - "communication"
+
+  - id: "limitation_of_action"
+    name: "Limitation of Action Clauses"
+    question: "What are the statute of limitations and time limits for legal actions in our contracts?"
+    description: "Tests limitation of action clause extraction"
+    category: "analytical"
+    level: "medium"
+    expected_keywords:
+      - "limitation"
+      - "action"
+      - "statute"
+    expected_keywords_any:
+      - "year"
+      - "time"
+      - "limit"
+      - "period"
+    min_confidence: 0.3
+    min_vector_results: 1
+    expected_sparql_patterns:
+      - "LimitationOfActionClause"
+    tags:
+      - "legal"
+      - "time-limits"
+
+  # ===========================================
+  # RISK ASSESSMENT QUERIES
+  # ===========================================
+
+  - id: "risk_assessment_termination"
+    name: "Termination Risk Assessment"
+    question: "What risks are associated with termination notice periods in our contracts?"
+    description: "Tests risk analysis and reasoning capabilities"
+    category: "risk"
+    level: "complex"
+    expected_keywords:
+      - "risk"
+      - "termination"
+      - "notice"
+    expected_keywords_any:
+      - "high"
+      - "low"
+      - "short"
+      - "exposure"
+    min_confidence: 0.3
+    min_vector_results: 2
+    tags:
+      - "risk"
+      - "assessment"
+      - "termination"
+
+  - id: "liability_risk_analysis"
+    name: "Liability Risk Analysis"
+    question: "Which contracts have the highest liability exposure? Are there any unlimited liability clauses?"
+    description: "Tests liability risk assessment across contracts"
+    category: "risk"
+    level: "complex"
+    expected_keywords:
+      - "liability"
+      - "risk"
+      - "exposure"
+    expected_keywords_any:
+      - "high"
+      - "unlimited"
+      - "cap"
+      - "limit"
+    min_confidence: 0.3
+    min_vector_results: 2
+    tags:
+      - "risk"
+      - "liability"
+
+  - id: "compliance_gaps"
+    name: "Compliance Gap Analysis"
+    question: "Are there any missing compliance clauses in our contracts? What should we add?"
+    description: "Tests gap analysis and recommendations"
+    category: "risk"
+    level: "complex"
+    expected_keywords:
+      - "compliance"
+      - "missing"
+      - "gap"
+    expected_keywords_any:
+      - "should"
+      - "recommend"
+      - "add"
+      - "include"
+    min_confidence: 0.3
+    min_vector_results: 1
+    tags:
+      - "risk"
+      - "compliance"
+      - "gaps"
+
+  # ===========================================
+  # COMPLIANCE QUERIES
+  # ===========================================
+
+  - id: "confidentiality_compliance"
+    name: "Confidentiality Requirements"
+    question: "What are the confidentiality requirements in our contracts?"
+    description: "Tests compliance-related queries"
+    category: "compliance"
+    level: "medium"
+    expected_keywords:
+      - "confidential"
+      - "information"
+      - "disclosure"
+    forbidden_keywords:
+      - "public"
+      - "share"
+    min_confidence: 0.3
+    min_vector_results: 1
+    tags:
+      - "compliance"
+      - "confidentiality"
+
+  - id: "ip_compliance"
+    name: "IP Compliance Requirements"
+    question: "What intellectual property compliance requirements do our contracts specify?"
+    description: "Tests IP compliance extraction"
+    category: "compliance"
+    level: "medium"
+    expected_keywords:
+      - "intellectual"
+      - "property"
+      - "compliance"
+    expected_keywords_any:
+      - "requirement"
+      - "standard"
+      - "protection"
+    min_confidence: 0.3
+    min_vector_results: 1
+    tags:
+      - "compliance"
+      - "ip"
+
+  # ===========================================
+  # COMPLEX MULTI-HOP QUERIES
+  # ===========================================
+
+  - id: "cross_contract_patterns"
+    name: "Cross-Contract Pattern Analysis"
+    question: "Which contracts have similar termination and liability terms? What are the differences?"
+    description: "Tests complex reasoning across multiple contracts"
+    category: "analytical"
+    level: "complex"
+    expected_keywords:
+      - "contract"
+      - "termination"
+      - "liability"
+      - "terms"
+    expected_keywords_any:
+      - "similar"
+      - "different"
+      - "compare"
+    min_confidence: 0.3
+    min_kg_facts: 2
+    min_vector_results: 3
+    tags:
+      - "multi-hop"
+      - "comparison"
+
+  - id: "obligations_tracking"
+    name: "Obligations and Deadlines"
+    question: "What are the key obligations in our contracts? Are there any time-sensitive obligations or deadlines?"
+    description: "Tests obligation extraction and temporal reasoning"
+    category: "analytical"
+    level: "complex"
+    expected_keywords:
+      - "obligation"
+      - "deadline"
+      - "requirement"
+    expected_keywords_any:
+      - "time"
+      - "date"
+      - "must"
+      - "shall"
+    min_confidence: 0.3
+    min_kg_facts: 1
+    min_vector_results: 2
+    tags:
+      - "obligations"
+      - "deadlines"
+
+  - id: "entity_relationships"
+    name: "Entity Relationships"
+    question: "Who are the parties involved in our contracts? Show me the relationships between entities."
+    description: "Tests entity extraction and relationship traversal"
+    category: "analytical"
+    level: "complex"
+    expected_keywords:
+      - "party"
+      - "entity"
+      - "relationship"
+    expected_keywords_any:
+      - "supplier"
+      - "client"
+      - "organization"
+    min_confidence: 0.3
+    min_kg_facts: 1
+    min_vector_results: 1
+    tags:
+      - "entities"
+      - "relationships"
+
+  - id: "comprehensive_risk_profile"
+    name: "Comprehensive Risk Profile"
+    question: "Analyze the risk profile of our contracts. Consider termination conditions, liability terms, and any unusual clauses. Which contracts have the highest risk?"
+    description: "Tests multi-dimensional risk analysis"
+    category: "risk"
+    level: "complex"
+    expected_keywords:
+      - "risk"
+      - "termination"
+      - "liability"
+    expected_keywords_any:
+      - "high"
+      - "low"
+      - "unusual"
+      - "concerning"
+    min_confidence: 0.3
+    min_kg_facts: 2
+    min_vector_results: 3
+    tags:
+      - "risk"
+      - "assessment"
+      - "multi-dimensional"
+
+  # ===========================================
+  # DOCUMENT-SPECIFIC QUERIES
+  # ===========================================
+
+  - id: "doc_specific_clauses"
+    name: "Document-Specific Query - doc_5f2580db"
+    question: "What are the key clauses in document doc_5f2580db?"
+    description: "Tests querying a specific document graph"
+    category: "factual"
+    level: "simple"
+    graph_uri: "http://procurement.kg/contract#graph/doc_5f2580db"
+    expected_keywords:
+      - "clause"
+      - "document"
+    expected_content:
+      - "doc_5f2580db"
+    expected_keywords_any:
+      - "Termination"
+      - "Liability"
+      - "Notices"
+    min_confidence: 0.3
+    tags:
+      - "document-specific"
+
+  - id: "doc_specific_ip"
+    name: "Document-Specific IP Query - doc_b7de7bc9"
+    question: "What intellectual property and confidentiality clauses are in document doc_b7de7bc9?"
+    description: "Tests querying IP clauses in a specific document"
+    category: "analytical"
+    level: "medium"
+    graph_uri: "http://procurement.kg/contract#graph/doc_b7de7bc9"
+    expected_keywords:
+      - "intellectual"
+      - "property"
+      - "confidentiality"
+    expected_content:
+      - "doc_b7de7bc9"
+    min_confidence: 0.3
+    min_vector_results: 1
+    tags:
+      - "document-specific"
+      - "ip"
+
+  # ===========================================
+  # COMPARATIVE ANALYSIS
+  # ===========================================
+
+  - id: "compare_termination_terms"
+    name: "Compare Termination Terms"
+    question: "Compare termination notice periods across all contracts. Which contracts have the shortest notice periods?"
+    description: "Tests comparative analysis across contracts"
+    category: "analytical"
+    level: "complex"
+    expected_keywords:
+      - "termination"
+      - "notice"
+      - "period"
+      - "compare"
+    expected_keywords_any:
+      - "short"
+      - "long"
+      - "days"
+    min_confidence: 0.3
+    min_kg_facts: 2
+    min_vector_results: 2
+    tags:
+      - "comparison"
+      - "termination"
+
+  - id: "standardization_opportunities"
+    name: "Standardization Opportunities"
+    question: "What inconsistencies exist in our contract terms? Which clauses should be standardized?"
+    description: "Tests pattern detection and standardization recommendations"
+    category: "analytical"
+    level: "complex"
+    expected_keywords:
+      - "inconsistency"
+      - "standard"
+      - "clause"
+    expected_keywords_any:
+      - "should"
+      - "recommend"
+      - "different"
+    min_confidence: 0.3
+    min_kg_facts: 2
+    min_vector_results: 2
+    tags:
+      - "standardization"
+      - "analysis"

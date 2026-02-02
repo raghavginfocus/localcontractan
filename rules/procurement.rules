@@ -1,0 +1,199 @@
+# Apache Jena Reasoning Rules for Procurement Contracts
+# =====================================================
+# 
+# These rules enable automatic inference of:
+# - Risk levels based on clause attributes
+# - Contract classifications
+# - Compliance issues
+# - Obligation derivations
+#
+# Syntax: [ruleName: premises -> conclusions]
+# 
+# Built-in predicates available:
+# - lessThan, greaterThan, le, ge
+# - equal, notEqual
+# - sum, product, difference, quotient
+# - strConcat, regex
+# - now, makeTemp
+
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+@prefix proc: <http://procurement.kg/ontology#> .
+
+# ==============================================================================
+# RISK INFERENCE RULES
+# ==============================================================================
+
+# High Termination Risk: Notice period less than 30 days
+[HighTerminationRisk:
+    (?clause rdf:type proc:TerminationClause)
+    (?clause proc:noticePeriod ?days)
+    lessThan(?days, 30)
+    ->
+    (?clause proc:introducesRisk proc:HighTerminationRisk)
+]
+
+# Low Termination Risk: Notice period 90 days or more
+[LowTerminationRisk:
+    (?clause rdf:type proc:TerminationClause)
+    (?clause proc:noticePeriod ?days)
+    ge(?days, 90)
+    ->
+    (?clause proc:introducesRisk proc:LowTerminationRisk)
+]
+
+# Medium Termination Risk: Notice period between 30-89 days
+[MediumTerminationRisk:
+    (?clause rdf:type proc:TerminationClause)
+    (?clause proc:noticePeriod ?days)
+    ge(?days, 30)
+    lessThan(?days, 90)
+    ->
+    (?clause proc:introducesRisk proc:MediumTerminationRisk)
+]
+
+# High Financial Risk: Penalty clause with amount > 100000
+[HighFinancialRisk:
+    (?clause rdf:type proc:PenaltyClause)
+    (?clause proc:penaltyAmount ?amount)
+    greaterThan(?amount, 100000)
+    ->
+    (?clause proc:introducesRisk proc:HighFinancialRisk)
+]
+
+# ==============================================================================
+# CONTRACT CLASSIFICATION RULES
+# ==============================================================================
+
+# High Value Contract: Value >= 1,000,000
+[HighValueContract:
+    (?contract rdf:type proc:Contract)
+    (?contract proc:contractValue ?value)
+    ge(?value, 1000000)
+    ->
+    (?contract rdf:type proc:HighValueContract)
+]
+
+# Medium Value Contract: Value between 100,000 and 1,000,000
+[MediumValueContract:
+    (?contract rdf:type proc:Contract)
+    (?contract proc:contractValue ?value)
+    ge(?value, 100000)
+    lessThan(?value, 1000000)
+    ->
+    (?contract rdf:type proc:MediumValueContract)
+]
+
+# ==============================================================================
+# COMPLIANCE RULES
+# ==============================================================================
+
+# EU Compliance: EU contracts must have minimum 30 day termination notice
+[EUTerminationCompliance:
+    (?contract rdf:type proc:Contract)
+    (?contract proc:governedBy proc:EU)
+    (?contract proc:hasClause ?clause)
+    (?clause rdf:type proc:TerminationClause)
+    (?clause proc:noticePeriod ?days)
+    lessThan(?days, 30)
+    ->
+    (?contract proc:hasComplianceIssue proc:EUTerminationNotice)
+]
+
+# US Federal Contract Compliance: Must have certain clauses
+# (This is a simplified example - real rules would be more complex)
+[USFederalClauseRequirement:
+    (?contract rdf:type proc:Contract)
+    (?contract proc:governedBy proc:US)
+    (?contract proc:contractValue ?value)
+    ge(?value, 250000)
+    noValue(?contract proc:hasClause ?indemnClause)
+    (?indemnClause rdf:type proc:IndemnificationClause)
+    ->
+    (?contract proc:hasComplianceIssue proc:USIndemnificationRequired)
+]
+
+# ==============================================================================
+# OBLIGATION DERIVATION RULES
+# ==============================================================================
+
+# Payment clause creates payment obligation
+[PaymentObligationDerivation:
+    (?clause rdf:type proc:PaymentClause)
+    (?contract proc:hasClause ?clause)
+    (?contract proc:hasParty ?buyer)
+    (?buyer rdf:type proc:Buyer)
+    (?contract proc:hasParty ?supplier)
+    (?supplier rdf:type proc:Supplier)
+    ->
+    (?clause proc:createsObligation ?obligation)
+    (?obligation rdf:type proc:PaymentObligation)
+    (?obligation proc:obligorParty ?buyer)
+    (?obligation proc:obligeeParty ?supplier)
+]
+
+# ==============================================================================
+# RISK PROPAGATION RULES
+# ==============================================================================
+
+# Propagate high risks from clauses to contracts
+[RiskPropagation:
+    (?contract proc:hasClause ?clause)
+    (?clause proc:introducesRisk ?risk)
+    (?risk proc:severity "High")
+    ->
+    (?contract proc:hasHighRisk ?risk)
+]
+
+# Contract with multiple high risks is flagged
+[MultipleHighRisks:
+    (?contract proc:hasHighRisk ?risk1)
+    (?contract proc:hasHighRisk ?risk2)
+    notEqual(?risk1, ?risk2)
+    ->
+    (?contract rdf:type proc:HighRiskContract)
+]
+
+# ==============================================================================
+# TRANSITIVITY AND INHERITANCE
+# ==============================================================================
+
+# Subclass inference (supplement OWL reasoning)
+[ClauseSubclass:
+    (?subClass rdfs:subClassOf proc:Clause)
+    (?instance rdf:type ?subClass)
+    ->
+    (?instance rdf:type proc:Clause)
+]
+
+# Risk subclass inference
+[RiskSubclass:
+    (?subClass rdfs:subClassOf proc:Risk)
+    (?instance rdf:type ?subClass)
+    ->
+    (?instance rdf:type proc:Risk)
+]
+
+# ==============================================================================
+# HELPER RULES
+# ==============================================================================
+
+# Create Medium Termination Risk individual if not exists
+[CreateMediumTerminationRisk:
+    (?x proc:introducesRisk proc:MediumTerminationRisk)
+    ->
+    (proc:MediumTerminationRisk rdf:type proc:TerminationRisk)
+    (proc:MediumTerminationRisk rdfs:label "Medium Termination Risk")
+    (proc:MediumTerminationRisk proc:severity "Medium")
+]
+
+# Create High Financial Risk individual if not exists
+[CreateHighFinancialRisk:
+    (?x proc:introducesRisk proc:HighFinancialRisk)
+    ->
+    (proc:HighFinancialRisk rdf:type proc:FinancialRisk)
+    (proc:HighFinancialRisk rdfs:label "High Financial Risk")
+    (proc:HighFinancialRisk proc:severity "High")
+]

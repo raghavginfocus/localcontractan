@@ -1,0 +1,208 @@
+@prefix sh: <http://www.w3.org/ns/shacl#> .
+@prefix proc: <http://procurement.kg/ontology#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+
+# =============================================================================
+# Contract SHACL Validation Shapes
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Contract Shape
+# -----------------------------------------------------------------------------
+proc:ContractShape a sh:NodeShape ;
+    sh:targetClass proc:Contract ;
+    sh:property [
+        sh:path proc:hasClause ;
+        sh:minCount 1 ;
+        sh:message "Contract must have at least one clause" ;
+        sh:severity sh:Warning ;
+    ] ;
+    sh:property [
+        sh:path rdfs:label ;
+        sh:minCount 1 ;
+        sh:datatype xsd:string ;
+        sh:message "Contract must have a label" ;
+        sh:severity sh:Warning ;
+    ] ;
+    sh:property [
+        sh:path proc:contractValue ;
+        sh:datatype xsd:decimal ;
+        sh:minInclusive 0 ;
+        sh:message "Contract value must be non-negative" ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path proc:effectiveDate ;
+        sh:datatype xsd:date ;
+        sh:maxCount 1 ;
+        sh:message "Contract should have at most one effective date" ;
+        sh:severity sh:Warning ;
+    ] ;
+    sh:property [
+        sh:path proc:expirationDate ;
+        sh:datatype xsd:date ;
+        sh:maxCount 1 ;
+        sh:message "Contract should have at most one expiration date" ;
+        sh:severity sh:Warning ;
+    ] .
+
+# -----------------------------------------------------------------------------
+# Clause Shape (Base)
+# -----------------------------------------------------------------------------
+proc:ClauseShape a sh:NodeShape ;
+    sh:targetClass proc:Clause ;
+    sh:property [
+        sh:path proc:rawText ;
+        sh:minCount 1 ;
+        sh:datatype xsd:string ;
+        sh:message "Clause must have raw text content" ;
+        sh:severity sh:Warning ;
+    ] ;
+    sh:property [
+        sh:path rdfs:label ;
+        sh:datatype xsd:string ;
+        sh:message "Clause label should be a string" ;
+        sh:severity sh:Info ;
+    ] .
+
+# -----------------------------------------------------------------------------
+# Termination Clause Shape
+# -----------------------------------------------------------------------------
+proc:TerminationClauseShape a sh:NodeShape ;
+    sh:targetClass proc:TerminationClause ;
+    sh:property [
+        sh:path proc:noticePeriod ;
+        sh:datatype xsd:integer ;
+        sh:minInclusive 1 ;
+        sh:message "Notice period must be a positive integer (days)" ;
+        sh:severity sh:Warning ;
+    ] ;
+    sh:property [
+        sh:path proc:rawText ;
+        sh:minCount 1 ;
+        sh:message "Termination clause must have raw text" ;
+        sh:severity sh:Violation ;
+    ] .
+
+# -----------------------------------------------------------------------------
+# Payment Clause Shape
+# -----------------------------------------------------------------------------
+proc:PaymentClauseShape a sh:NodeShape ;
+    sh:targetClass proc:PaymentClause ;
+    sh:property [
+        sh:path proc:paymentDays ;
+        sh:datatype xsd:integer ;
+        sh:minInclusive 1 ;
+        sh:maxInclusive 365 ;
+        sh:message "Payment days should be between 1 and 365" ;
+        sh:severity sh:Warning ;
+    ] ;
+    sh:property [
+        sh:path proc:paymentTerms ;
+        sh:datatype xsd:string ;
+        sh:message "Payment terms should be a string" ;
+        sh:severity sh:Info ;
+    ] .
+
+# -----------------------------------------------------------------------------
+# Penalty Clause Shape
+# -----------------------------------------------------------------------------
+proc:PenaltyClauseShape a sh:NodeShape ;
+    sh:targetClass proc:PenaltyClause ;
+    sh:property [
+        sh:path proc:penaltyPercentage ;
+        sh:datatype xsd:decimal ;
+        sh:minInclusive 0 ;
+        sh:maxInclusive 100 ;
+        sh:message "Penalty percentage should be between 0 and 100" ;
+        sh:severity sh:Warning ;
+    ] ;
+    sh:property [
+        sh:path proc:penaltyAmount ;
+        sh:datatype xsd:decimal ;
+        sh:minInclusive 0 ;
+        sh:message "Penalty amount must be non-negative" ;
+        sh:severity sh:Warning ;
+    ] .
+
+# -----------------------------------------------------------------------------
+# Party Shape
+# -----------------------------------------------------------------------------
+proc:PartyShape a sh:NodeShape ;
+    sh:targetClass proc:Party ;
+    sh:property [
+        sh:path rdfs:label ;
+        sh:minCount 1 ;
+        sh:datatype xsd:string ;
+        sh:message "Party must have a label (name)" ;
+        sh:severity sh:Warning ;
+    ] .
+
+# -----------------------------------------------------------------------------
+# Obligation Shape
+# -----------------------------------------------------------------------------
+proc:ObligationShape a sh:NodeShape ;
+    sh:targetClass proc:Obligation ;
+    sh:property [
+        sh:path proc:obligationType ;
+        sh:minCount 1 ;
+        sh:datatype xsd:string ;
+        sh:message "Obligation must have a type" ;
+        sh:severity sh:Warning ;
+    ] ;
+    sh:property [
+        sh:path proc:obligor ;
+        sh:minCount 1 ;
+        sh:message "Obligation must specify who is obligated" ;
+        sh:severity sh:Warning ;
+    ] ;
+    sh:property [
+        sh:path proc:obligee ;
+        sh:minCount 1 ;
+        sh:message "Obligation must specify the beneficiary" ;
+        sh:severity sh:Warning ;
+    ] .
+
+# -----------------------------------------------------------------------------
+# Risk Shape
+# -----------------------------------------------------------------------------
+proc:RiskShape a sh:NodeShape ;
+    sh:targetClass proc:Risk ;
+    sh:property [
+        sh:path proc:riskType ;
+        sh:minCount 1 ;
+        sh:datatype xsd:string ;
+        sh:message "Risk must have a type" ;
+        sh:severity sh:Warning ;
+    ] ;
+    sh:property [
+        sh:path proc:severity ;
+        sh:minCount 1 ;
+        sh:in ("Low" "Medium" "High" "Critical") ;
+        sh:message "Risk severity must be Low, Medium, High, or Critical" ;
+        sh:severity sh:Warning ;
+    ] .
+
+# -----------------------------------------------------------------------------
+# Cross-Entity Constraints
+# -----------------------------------------------------------------------------
+
+# Ensure clauses belong to a contract
+proc:ClauseBelongsToContractShape a sh:NodeShape ;
+    sh:targetSubjectsOf proc:rawText ;
+    sh:sparql [
+        sh:message "Clause should be linked to a contract via proc:hasClause" ;
+        sh:severity sh:Warning ;
+        sh:select """
+            PREFIX proc: <http://procurement.kg/ontology#>
+            SELECT $this
+            WHERE {
+                $this proc:rawText ?text .
+                FILTER NOT EXISTS {
+                    ?contract proc:hasClause $this .
+                }
+            }
+        """ ;
+    ] .

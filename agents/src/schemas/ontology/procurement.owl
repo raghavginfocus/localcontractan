@@ -1,0 +1,448 @@
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+@prefix proc: <http://procurement.kg/ontology#> .
+
+# =============================================================================
+# Procurement Contract Ontology
+# =============================================================================
+# This ontology defines the classes, properties, and relationships for
+# modeling procurement contracts in a knowledge graph.
+# =============================================================================
+
+proc: a owl:Ontology ;
+    rdfs:label "Procurement Contract Ontology" ;
+    rdfs:comment "Ontology for modeling procurement contracts, clauses, obligations, and risks" ;
+    owl:versionInfo "1.0.0" .
+
+# =============================================================================
+# CLASSES
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Core Classes
+# -----------------------------------------------------------------------------
+
+proc:Contract a owl:Class ;
+    rdfs:label "Contract" ;
+    rdfs:comment "A procurement contract between parties" .
+
+proc:Clause a owl:Class ;
+    rdfs:label "Clause" ;
+    rdfs:comment "A clause within a contract" .
+
+# =============================================================================
+# CLAUSE SUMMARY PROPERTIES
+# =============================================================================
+
+proc:summary a owl:DatatypeProperty ;
+    rdfs:domain proc:Clause ;
+    rdfs:range xsd:string ;
+    rdfs:label "Summary" ;
+    rdfs:comment "Brief 1-2 sentence summary of a clause" .
+
+proc:hasKeyPoint a owl:DatatypeProperty ;
+    rdfs:domain proc:Clause ;
+    rdfs:range xsd:string ;
+    rdfs:label "Key point" ;
+    rdfs:comment "A key point (bullet) summarizing an important clause term" .
+
+proc:structuredSummary a owl:DatatypeProperty ;
+    rdfs:domain proc:Clause ;
+    rdfs:range xsd:string ;
+    rdfs:label "Structured summary" ;
+    rdfs:comment "Structured key-value summary serialized as JSON" .
+
+proc:Party a owl:Class ;
+    rdfs:label "Party" ;
+    rdfs:comment "A party to a contract" .
+
+proc:Obligation a owl:Class ;
+    rdfs:label "Obligation" ;
+    rdfs:comment "A contractual obligation" .
+
+proc:Risk a owl:Class ;
+    rdfs:label "Risk" ;
+    rdfs:comment "An identified contract risk" .
+
+proc:Jurisdiction a owl:Class ;
+    rdfs:label "Jurisdiction" ;
+    rdfs:comment "A legal jurisdiction" .
+
+# -----------------------------------------------------------------------------
+# Clause Types (Subclasses of Clause)
+# -----------------------------------------------------------------------------
+
+proc:TerminationClause a owl:Class ;
+    rdfs:subClassOf proc:Clause ;
+    rdfs:label "Termination Clause" ;
+    rdfs:comment "Contract termination conditions" .
+
+proc:PaymentClause a owl:Class ;
+    rdfs:subClassOf proc:Clause ;
+    rdfs:label "Payment Clause" ;
+    rdfs:comment "Payment terms and conditions" .
+
+proc:PenaltyClause a owl:Class ;
+    rdfs:subClassOf proc:Clause ;
+    rdfs:label "Penalty Clause" ;
+    rdfs:comment "Penalties for breach or delay" .
+
+proc:ConfidentialityClause a owl:Class ;
+    rdfs:subClassOf proc:Clause ;
+    rdfs:label "Confidentiality Clause" ;
+    rdfs:comment "Non-disclosure provisions" .
+
+proc:IndemnificationClause a owl:Class ;
+    rdfs:subClassOf proc:Clause ;
+    rdfs:label "Indemnification Clause" ;
+    rdfs:comment "Liability and indemnification terms" .
+
+proc:ForceMajeureClause a owl:Class ;
+    rdfs:subClassOf proc:Clause ;
+    rdfs:label "Force Majeure Clause" ;
+    rdfs:comment "Force majeure provisions" .
+
+proc:GoverningLawClause a owl:Class ;
+    rdfs:subClassOf proc:Clause ;
+    rdfs:label "Governing Law Clause" ;
+    rdfs:comment "Jurisdiction and governing law" .
+
+proc:DisputeResolutionClause a owl:Class ;
+    rdfs:subClassOf proc:Clause ;
+    rdfs:label "Dispute Resolution Clause" ;
+    rdfs:comment "Dispute handling procedures" .
+
+proc:WarrantyClause a owl:Class ;
+    rdfs:subClassOf proc:Clause ;
+    rdfs:label "Warranty Clause" ;
+    rdfs:comment "Warranties and guarantees" .
+
+proc:InsuranceClause a owl:Class ;
+    rdfs:subClassOf proc:Clause ;
+    rdfs:label "Insurance Clause" ;
+    rdfs:comment "Insurance requirements" .
+
+proc:ComplianceClause a owl:Class ;
+    rdfs:subClassOf proc:Clause ;
+    rdfs:label "Compliance Clause" ;
+    rdfs:comment "Regulatory compliance requirements" .
+
+proc:IntellectualPropertyClause a owl:Class ;
+    rdfs:subClassOf proc:Clause ;
+    rdfs:label "Intellectual Property Clause" ;
+    rdfs:comment "IP ownership and licensing" .
+
+proc:LimitationOfLiabilityClause a owl:Class ;
+    rdfs:subClassOf proc:Clause ;
+    rdfs:label "Limitation of Liability Clause" ;
+    rdfs:comment "Liability caps and limitations" .
+
+proc:AssignmentClause a owl:Class ;
+    rdfs:subClassOf proc:Clause ;
+    rdfs:label "Assignment Clause" ;
+    rdfs:comment "Contract assignment terms" .
+
+proc:AmendmentClause a owl:Class ;
+    rdfs:subClassOf proc:Clause ;
+    rdfs:label "Amendment Clause" ;
+    rdfs:comment "Contract modification procedures" .
+
+# -----------------------------------------------------------------------------
+# Party Types (Subclasses of Party)
+# -----------------------------------------------------------------------------
+
+proc:Buyer a owl:Class ;
+    rdfs:subClassOf proc:Party ;
+    rdfs:label "Buyer" ;
+    rdfs:comment "The purchasing party" .
+
+proc:Supplier a owl:Class ;
+    rdfs:subClassOf proc:Party ;
+    rdfs:label "Supplier" ;
+    rdfs:comment "The supplying party" .
+
+proc:Contractor a owl:Class ;
+    rdfs:subClassOf proc:Party ;
+    rdfs:label "Contractor" ;
+    rdfs:comment "A contractor party" .
+
+# -----------------------------------------------------------------------------
+# Risk Levels (Instances of RiskLevel)
+# -----------------------------------------------------------------------------
+
+proc:RiskLevel a owl:Class ;
+    rdfs:label "Risk Level" ;
+    rdfs:comment "Classification of risk severity" .
+
+proc:HighTerminationRisk a proc:RiskLevel ;
+    rdfs:label "High Termination Risk" ;
+    rdfs:comment "High risk due to short termination notice period" .
+
+proc:MediumTerminationRisk a proc:RiskLevel ;
+    rdfs:label "Medium Termination Risk" ;
+    rdfs:comment "Medium risk due to moderate termination notice period" .
+
+proc:LowTerminationRisk a proc:RiskLevel ;
+    rdfs:label "Low Termination Risk" ;
+    rdfs:comment "Low risk due to adequate termination notice period" .
+
+proc:LatePaymentRisk a proc:RiskLevel ;
+    rdfs:label "Late Payment Risk" ;
+    rdfs:comment "Risk of late payment due to extended payment terms" .
+
+proc:ExcessivePenaltyRisk a proc:RiskLevel ;
+    rdfs:label "Excessive Penalty Risk" ;
+    rdfs:comment "Risk from excessive penalty clauses" .
+
+# -----------------------------------------------------------------------------
+# Compliance Issues (Instances)
+# -----------------------------------------------------------------------------
+
+proc:ComplianceIssue a owl:Class ;
+    rdfs:label "Compliance Issue" ;
+    rdfs:comment "A regulatory or policy compliance issue" .
+
+proc:EUTerminationNotice a proc:ComplianceIssue ;
+    rdfs:label "EU Termination Notice Issue" ;
+    rdfs:comment "Short termination notice period under EU jurisdiction" .
+
+proc:UKTerminationNotice a proc:ComplianceIssue ;
+    rdfs:label "UK Termination Notice Issue" ;
+    rdfs:comment "Short termination notice period under UK jurisdiction" .
+
+# -----------------------------------------------------------------------------
+# Jurisdictions (Common Instances)
+# -----------------------------------------------------------------------------
+
+proc:EU a proc:Jurisdiction ;
+    rdfs:label "European Union" .
+
+proc:US a proc:Jurisdiction ;
+    rdfs:label "United States" .
+
+proc:UK a proc:Jurisdiction ;
+    rdfs:label "United Kingdom" .
+
+proc:Delaware a proc:Jurisdiction ;
+    rdfs:label "State of Delaware" .
+
+proc:California a proc:Jurisdiction ;
+    rdfs:label "State of California" .
+
+proc:NewYork a proc:Jurisdiction ;
+    rdfs:label "State of New York" .
+
+# =============================================================================
+# OBJECT PROPERTIES
+# =============================================================================
+
+proc:hasClause a owl:ObjectProperty ;
+    rdfs:domain proc:Contract ;
+    rdfs:range proc:Clause ;
+    rdfs:label "has clause" ;
+    rdfs:comment "Links a contract to its clauses" .
+
+proc:hasParty a owl:ObjectProperty ;
+    rdfs:domain proc:Contract ;
+    rdfs:range proc:Party ;
+    rdfs:label "has party" ;
+    rdfs:comment "Links a contract to its parties" .
+
+proc:governedBy a owl:ObjectProperty ;
+    rdfs:domain proc:Contract ;
+    rdfs:range proc:Jurisdiction ;
+    rdfs:label "governed by" ;
+    rdfs:comment "The jurisdiction governing the contract" .
+
+proc:hasRiskLevel a owl:ObjectProperty ;
+    rdfs:domain proc:Clause ;
+    rdfs:range proc:RiskLevel ;
+    rdfs:label "has risk level" ;
+    rdfs:comment "Risk level associated with a clause" .
+
+proc:hasRisk a owl:ObjectProperty ;
+    rdfs:domain proc:Clause ;
+    rdfs:range proc:Risk ;
+    rdfs:label "has risk" ;
+    rdfs:comment "Risk associated with a clause" .
+
+proc:createsObligation a owl:ObjectProperty ;
+    rdfs:domain proc:Clause ;
+    rdfs:range proc:Obligation ;
+    rdfs:label "creates obligation" ;
+    rdfs:comment "Clause creates an obligation" .
+
+proc:introducesRisk a owl:ObjectProperty ;
+    rdfs:domain proc:Clause ;
+    rdfs:range proc:Risk ;
+    rdfs:label "introduces risk" ;
+    rdfs:comment "Clause introduces a risk" .
+
+proc:hasComplianceIssue a owl:ObjectProperty ;
+    rdfs:domain proc:Contract ;
+    rdfs:range proc:ComplianceIssue ;
+    rdfs:label "has compliance issue" ;
+    rdfs:comment "Contract has a compliance issue" .
+
+proc:hasAssociatedRisk a owl:ObjectProperty ;
+    rdfs:domain proc:Contract ;
+    rdfs:range proc:RiskLevel ;
+    rdfs:label "has associated risk" ;
+    rdfs:comment "Contract has an associated risk from its clauses" .
+
+# =============================================================================
+# DATATYPE PROPERTIES
+# =============================================================================
+
+# Contract Properties
+proc:contractValue a owl:DatatypeProperty ;
+    rdfs:domain proc:Contract ;
+    rdfs:range xsd:decimal ;
+    rdfs:label "contract value" ;
+    rdfs:comment "Total value of the contract" .
+
+proc:effectiveDate a owl:DatatypeProperty ;
+    rdfs:domain proc:Contract ;
+    rdfs:range xsd:date ;
+    rdfs:label "effective date" ;
+    rdfs:comment "Date when the contract becomes effective" .
+
+proc:expirationDate a owl:DatatypeProperty ;
+    rdfs:domain proc:Contract ;
+    rdfs:range xsd:date ;
+    rdfs:label "expiration date" ;
+    rdfs:comment "Date when the contract expires" .
+
+proc:isHighValue a owl:DatatypeProperty ;
+    rdfs:domain proc:Contract ;
+    rdfs:range xsd:boolean ;
+    rdfs:label "is high value" ;
+    rdfs:comment "Whether the contract is high value" .
+
+proc:isMediumValue a owl:DatatypeProperty ;
+    rdfs:domain proc:Contract ;
+    rdfs:range xsd:boolean ;
+    rdfs:label "is medium value" ;
+    rdfs:comment "Whether the contract is medium value" .
+
+proc:riskStatus a owl:DatatypeProperty ;
+    rdfs:domain proc:Contract ;
+    rdfs:range xsd:string ;
+    rdfs:label "risk status" ;
+    rdfs:comment "Overall risk status of the contract" .
+
+# Clause Properties
+proc:rawText a owl:DatatypeProperty ;
+    rdfs:domain proc:Clause ;
+    rdfs:range xsd:string ;
+    rdfs:label "raw text" ;
+    rdfs:comment "Original text of the clause" .
+
+proc:summary a owl:DatatypeProperty ;
+    rdfs:domain proc:Clause ;
+    rdfs:range xsd:string ;
+    rdfs:label "summary" ;
+    rdfs:comment "Brief summary of the clause" .
+
+proc:sectionNumber a owl:DatatypeProperty ;
+    rdfs:domain proc:Clause ;
+    rdfs:range xsd:string ;
+    rdfs:label "section number" ;
+    rdfs:comment "Section number in the contract" .
+
+# Termination Clause Properties
+proc:noticePeriod a owl:DatatypeProperty ;
+    rdfs:domain proc:TerminationClause ;
+    rdfs:range xsd:integer ;
+    rdfs:label "notice period" ;
+    rdfs:comment "Notice period in days" .
+
+# Payment Clause Properties
+proc:paymentDays a owl:DatatypeProperty ;
+    rdfs:domain proc:PaymentClause ;
+    rdfs:range xsd:integer ;
+    rdfs:label "payment days" ;
+    rdfs:comment "Number of days for payment" .
+
+proc:paymentTerms a owl:DatatypeProperty ;
+    rdfs:domain proc:PaymentClause ;
+    rdfs:range xsd:string ;
+    rdfs:label "payment terms" ;
+    rdfs:comment "Description of payment terms" .
+
+# Penalty Clause Properties
+proc:penaltyAmount a owl:DatatypeProperty ;
+    rdfs:domain proc:PenaltyClause ;
+    rdfs:range xsd:decimal ;
+    rdfs:label "penalty amount" ;
+    rdfs:comment "Monetary penalty amount" .
+
+proc:penaltyPercentage a owl:DatatypeProperty ;
+    rdfs:domain proc:PenaltyClause ;
+    rdfs:range xsd:decimal ;
+    rdfs:label "penalty percentage" ;
+    rdfs:comment "Penalty as a percentage" .
+
+# Obligation Properties
+proc:obligationType a owl:DatatypeProperty ;
+    rdfs:domain proc:Obligation ;
+    rdfs:range xsd:string ;
+    rdfs:label "obligation type" ;
+    rdfs:comment "Type of obligation" .
+
+proc:obligor a owl:DatatypeProperty ;
+    rdfs:domain proc:Obligation ;
+    rdfs:range xsd:string ;
+    rdfs:label "obligor" ;
+    rdfs:comment "Party who must fulfill the obligation" .
+
+proc:obligee a owl:DatatypeProperty ;
+    rdfs:domain proc:Obligation ;
+    rdfs:range xsd:string ;
+    rdfs:label "obligee" ;
+    rdfs:comment "Party who benefits from the obligation" .
+
+proc:deadline a owl:DatatypeProperty ;
+    rdfs:domain proc:Obligation ;
+    rdfs:range xsd:string ;
+    rdfs:label "deadline" ;
+    rdfs:comment "Deadline for the obligation" .
+
+proc:hasCondition a owl:DatatypeProperty ;
+    rdfs:domain proc:Obligation ;
+    rdfs:range xsd:string ;
+    rdfs:label "has condition" ;
+    rdfs:comment "Condition for the obligation" .
+
+# Risk Properties
+proc:riskType a owl:DatatypeProperty ;
+    rdfs:domain proc:Risk ;
+    rdfs:range xsd:string ;
+    rdfs:label "risk type" ;
+    rdfs:comment "Type of risk" .
+
+proc:severity a owl:DatatypeProperty ;
+    rdfs:domain proc:Risk ;
+    rdfs:range xsd:string ;
+    rdfs:label "severity" ;
+    rdfs:comment "Severity level" .
+
+proc:likelihood a owl:DatatypeProperty ;
+    rdfs:domain proc:Risk ;
+    rdfs:range xsd:string ;
+    rdfs:label "likelihood" ;
+    rdfs:comment "Likelihood of risk occurrence" .
+
+proc:mitigationStrategy a owl:DatatypeProperty ;
+    rdfs:domain proc:Risk ;
+    rdfs:range xsd:string ;
+    rdfs:label "mitigation strategy" ;
+    rdfs:comment "Strategy to mitigate the risk" .
+
+proc:affectedParty a owl:DatatypeProperty ;
+    rdfs:domain proc:Risk ;
+    rdfs:range xsd:string ;
+    rdfs:label "affected party" ;
+    rdfs:comment "Party most affected by the risk" .

@@ -1,0 +1,124 @@
+# Simple Test Cases grounded in actual ingested documents
+# Based on real data from examples folder: CBRE, SRA documents
+# Factual retrieval of clauses, parties, jurisdictions, and durations
+
+test_cases:
+  - id: "contract_titles_list"
+    name: "List Contract Titles"
+    question: "What are the titles of the contracts in the knowledge graph?"
+    description: "Lists all contract titles from ingested documents (Participation Attachment, SRA documents)"
+    category: "factual"
+    level: "simple"
+    expected_keywords:
+      - "Agreement"
+      - "contract"
+      - "Participation"
+    expected_keywords_any:
+      - "Participation Attachment"
+      - "Participation Attachment to Supplier Relationship Agreement"
+      - "Supplier Relationship Agreement"
+    min_confidence: 0.35
+    min_kg_facts: 1
+    tags:
+      - "basic"
+      - "contracts"
+      - "list"
+
+  - id: "contract_count"
+    name: "Count Contracts"
+    question: "How many contracts are in the knowledge graph?"
+    description: "Counts all contracts across named graphs"
+    category: "factual"
+    level: "simple"
+    expected_keywords:
+      - "contract"
+    expected_keywords_any:
+      - "10"
+      - "ten"
+      - "multiple"
+      - "several"
+    min_confidence: 0.30
+    min_kg_facts: 0
+    tags:
+      - "basic"
+      - "count"
+      - "aggregation"
+
+  - id: "termination_clauses"
+    name: "Termination Clauses"
+    question: "What termination clauses exist in the contracts?"
+    description: "Retrieves termination clauses from contracts (may not have notice periods extracted)"
+    category: "factual"
+    level: "simple"
+    expected_keywords:
+      - "termination"
+      - "clause"
+    expected_keywords_any:
+      - "TerminationClause"
+      - "termination"
+    min_confidence: 0.35
+    min_kg_facts: 1
+    expected_sparql_patterns:
+      - "proc:TerminationClause"
+    tags:
+      - "termination"
+      - "clause"
+
+  - id: "governing_jurisdictions"
+    name: "Governing Jurisdictions"
+    question: "Which jurisdictions govern the contracts?"
+    description: "Lists jurisdictions from actual contracts (New Zealand, Hong Kong)"
+    category: "factual"
+    level: "simple"
+    expected_keywords:
+      - "jurisdiction"
+    expected_keywords_any:
+      - "New Zealand"
+      - "NewZealand"
+      - "Hong Kong"
+      - "HongKong"
+      - "Hong Kong Special Administrative Region"
+    min_confidence: 0.30
+    min_kg_facts: 1
+    tags:
+      - "governing-law"
+      - "jurisdiction"
+
+  - id: "parties_list"
+    name: "List Contract Parties"
+    question: "Who are the parties in the contracts?"
+    description: "Retrieves party names from actual contracts (IBM, CBRE, etc.)"
+    category: "factual"
+    level: "simple"
+    expected_keywords:
+      - "party"
+    expected_keywords_any:
+      - "IBM"
+      - "CBRE"
+      - "Corporation"
+      - "Limited"
+      - "New Zealand"
+    min_confidence: 0.30
+    min_kg_facts: 0
+    tags:
+      - "entities"
+      - "parties"
+
+  - id: "contract_by_jurisdiction"
+    name: "Contracts by Jurisdiction"
+    question: "Which contracts are governed by New Zealand jurisdiction?"
+    description: "Lists contracts with New Zealand jurisdiction (changed from count to list to avoid SPARQL syntax issues)"
+    category: "factual"
+    level: "simple"
+    expected_keywords:
+      - "New Zealand"
+      - "jurisdiction"
+    expected_keywords_any:
+      - "NewZealand"
+      - "New Zealand"
+      - "contract"
+    min_confidence: 0.30
+    min_kg_facts: 0
+    tags:
+      - "jurisdiction"
+      - "filtering"
