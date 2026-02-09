@@ -33,17 +33,14 @@ print(f"By supplier: {scan_result.files_by_supplier}")
 - Batch organization by supplier
 - Metadata extraction from file paths
 
-### 2. Extended File Type Support
+### 2. Supported File Types
 
-Now supports additional file formats:
+Currently supports the following document formats:
 
 | Format | Extension | Library | Use Case |
 |--------|-----------|---------|----------|
 | PDF | `.pdf` | pdfplumber | Standard contracts |
 | Word | `.docx`, `.doc` | python-docx | Editable contracts |
-| Excel | `.xls`, `.xlsx` | openpyxl | Terms sheets, pricing |
-| Email | `.eml` | email | Contract attachments |
-| Text | `.txt`, `.md` | built-in | Plain text contracts |
 
 ### 3. Batch Processing
 
@@ -331,12 +328,6 @@ result = await processor.process({
 ## Troubleshooting
 
 ### Common Issues
-
-**Issue: Excel files not processing**
-```bash
-# Install Excel support
-pip install openpyxl xlrd
-```
 
 **Issue: Low extraction confidence**
 - Check document quality (scanned vs digital)
