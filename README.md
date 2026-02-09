@@ -332,15 +332,6 @@ make help
 # Build agents API Docker image
 make api-build
 
-# Build optimized image (smaller size)
-make api-build-optimized
-
-# Build minimal image (aggressive size reduction)
-make api-build-minimal
-
-# Build Alpine-based image (smallest, may have compatibility issues)
-make api-build-alpine
-
 # Start/stop API service
 make api-up
 make api-down
