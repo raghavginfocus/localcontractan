@@ -19,7 +19,7 @@ class ExtractedClause(BaseModel):
     section_number: str | None = Field(default=None, description="Section number if present")
     title: str | None = Field(default=None, description="Clause title if present")
     raw_text: str = Field(description="Original text of the clause")
-    summary: str = Field(description="Brief 5-10 sentence summary of the clause")
+    summary: str = Field(default="", description="Brief 5-10 sentence summary of the clause")
     key_points: list[str] = Field(
         default_factory=list,
         description="Key points (5-10 bullets) capturing important terms",
@@ -219,16 +219,18 @@ Extract all identifiable clauses and return as JSON."""),
                 "contract_text": text,
             })
             
-            # Parse clauses - normalize None values to empty dicts
+            # Parse clauses - normalize None/missing values
             clauses = []
             for clause_data in result.get("clauses", []):
-                # Normalize None values to empty dicts for dict fields
+                # Normalize None/missing values
                 if clause_data.get("structured_summary") is None:
                     clause_data["structured_summary"] = {}
                 if clause_data.get("attributes") is None:
                     clause_data["attributes"] = {}
                 if clause_data.get("key_points") is None:
                     clause_data["key_points"] = []
+                if clause_data.get("summary") is None or "summary" not in clause_data:
+                    clause_data["summary"] = ""
                 clauses.append(ExtractedClause(**clause_data))
             
             extraction_result = ClauseExtractionResult(

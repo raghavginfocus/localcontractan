@@ -6,20 +6,17 @@ Comprehensive guide for testing the Contract Knowledge Graph system.
 
 ```
 agents/tests/
-├── agents/                    # Agent tests
-│   ├── test_ingestion.py
-│   ├── test_retrieval.py
-│   └── test_schema_evolution.py
-├── storage/                   # Storage tests
-│   ├── test_fuseki_client.py
-│   └── test_milvus_store.py
-├── features/                  # Feature tests
-│   └── test_new_features.py
-├── ingestion/                 # Integration tests
-│   └── test_full_ingestion.py
-├── retrieval/                 # Retrieval tests
-│   └── test_hybrid_rag.py
-└── test_cases/               # Test case definitions
+├── conftest.py                # Shared pytest fixtures
+├── test_config.py            # Configuration tests
+├── test_storage.py           # Storage connection tests
+├── test_ingestion.py         # Document ingestion tests
+├── test_retrieval.py         # Query and retrieval tests
+├── test_api.py               # FastAPI endpoint tests
+├── test_utilities.py         # Utility function tests
+├── test_fuseki_client.py     # SPARQL client tests
+├── test_clause_extraction.py # Clause extraction tests
+├── test_vector_store.py      # Vector store tests
+└── test_cases/               # Test case definitions (YAML)
     ├── test_cases_simple.yaml
     ├── test_cases_medium.yaml
     └── test_cases_complex.yaml
@@ -27,426 +24,264 @@ agents/tests/
 
 ## Running Tests
 
+### Prerequisites
+
+Ensure dependencies are installed:
+
+```bash
+cd agents
+uv sync
+```
+
 ### All Tests
 
 ```bash
 cd agents
-uv run pytest
+PYTHONPATH=src uv run pytest
+```
+
+### With Coverage Report
+
+```bash
+cd agents
+PYTHONPATH=src uv run pytest --cov=src --cov-report=html --cov-report=term
+```
+
+View HTML coverage report:
+
+```bash
+open htmlcov/index.html
 ```
 
 ### Specific Test File
 
 ```bash
-uv run pytest tests/agents/test_ingestion.py
+PYTHONPATH=src uv run pytest tests/test_ingestion.py
 ```
 
 ### Specific Test Function
 
 ```bash
-uv run pytest tests/agents/test_ingestion.py::test_document_ingestion
-```
-
-### By Marker
-
-```bash
-# Run only unit tests
-uv run pytest -m unit
-
-# Run only integration tests
-uv run pytest -m integration
-
-# Skip slow tests
-uv run pytest -m "not slow"
-```
-
-### With Coverage
-
-```bash
-# Generate coverage report
-uv run pytest --cov=agents/src --cov-report=html
-
-# View report
-open htmlcov/index.html
+PYTHONPATH=src uv run pytest tests/test_ingestion.py::test_enhanced_document_ingestion
 ```
 
 ### Verbose Output
 
 ```bash
-# Show print statements
-uv run pytest -s
-
-# Verbose output
-uv run pytest -v
-
-# Very verbose
-uv run pytest -vv
+PYTHONPATH=src uv run pytest -v
 ```
+
+### Stop on First Failure
+
+```bash
+PYTHONPATH=src uv run pytest -x
+```
+
+### Run Tests in Parallel
+
+```bash
+PYTHONPATH=src uv run pytest -n auto
+```
+
+## Test Categories
+
+### Unit Tests (No External Dependencies)
+
+These tests run without live services:
+
+```bash
+PYTHONPATH=src uv run pytest tests/test_config.py tests/test_utilities.py
+```
+
+**Tests:**
+- Configuration validation
+- Utility functions
+- Data models
+- Helper functions
+
+### Integration Tests (Require Services)
+
+These tests need Fuseki and Milvus running:
+
+```bash
+# Start services first
+make services-up
+
+# Run integration tests
+PYTHONPATH=src uv run pytest tests/test_storage.py tests/test_fuseki_client.py
+```
+
+**Tests:**
+- Fuseki connection
+- Milvus connection
+- SPARQL queries
+- Vector operations
+
+### End-to-End Tests
+
+Full pipeline tests:
+
+```bash
+PYTHONPATH=src uv run pytest tests/test_ingestion.py tests/test_retrieval.py
+```
+
+## Current Test Coverage
+
+### Overall Coverage: 27%
+
+```
+Component                        Coverage
+─────────────────────────────────────────
+config.py                        99%
+directory_scanner.py             96%
+query_classifier.py              79%
+complexity_detector.py           77%
+ontology_manager.py              74%
+enhanced_document_ingestion.py   60%
+api/main.py                      52%
+batch_processor.py               46%
+```
+
+### Test Results Summary
+
+- **Total Tests**: 62
+- **Passing**: 49 (79%)
+- **Failing**: 13 (21% - require live services)
 
 ## Writing Tests
 
-### Unit Tests
-
-Test individual components in isolation:
+### Test Structure
 
 ```python
 import pytest
-from agents.ingestion.clause_extraction import ClauseExtractionAgent
+from agents.ingestion.enhanced_document_ingestion import EnhancedDocumentIngestionAgent
+from config import get_settings
 
-class TestClauseExtraction:
-    """Test clause extraction agent."""
+@pytest.mark.asyncio
+async def test_document_extraction():
+    """Test document text extraction"""
+    # Arrange
+    agent = EnhancedDocumentIngestionAgent(settings=get_settings())
     
-    def test_extract_clauses(self):
-        """Test basic clause extraction."""
-        agent = ClauseExtractionAgent()
-        
-        text = """
-        1. Termination: Either party may terminate with 30 days notice.
-        2. Payment: Payment due within 30 days of invoice.
-        """
-        
-        clauses = agent.extract_clauses(text)
-        
-        assert len(clauses) == 2
-        assert clauses[0].type == "TerminationClause"
-        assert clauses[1].type == "PaymentClause"
+    # Act
+    result = await agent.process("test_document.pdf")
     
-    def test_empty_text(self):
-        """Test with empty text."""
-        agent = ClauseExtractionAgent()
-        
-        with pytest.raises(ValueError):
-            agent.extract_clauses("")
-    
-    def test_invalid_format(self):
-        """Test with invalid format."""
-        agent = ClauseExtractionAgent()
-        
-        clauses = agent.extract_clauses("Random text without clauses")
-        
-        assert len(clauses) == 0
+    # Assert
+    assert result is not None
+    assert len(result.text) > 0
+    assert result.confidence > 0.5
 ```
 
-### Integration Tests
-
-Test component interactions:
+### Using Fixtures
 
 ```python
 import pytest
-from agents.ingestion.ingestion_orchestrator import IngestionOrchestrator
+from config import get_settings
 
-@pytest.mark.integration
-class TestIngestionPipeline:
-    """Test complete ingestion pipeline."""
-    
-    @pytest.fixture
-    def orchestrator(self):
-        """Create orchestrator instance."""
-        return IngestionOrchestrator(
-            enable_schema_evolution=False,
-            enable_reasoning=False
-        )
-    
-    def test_full_ingestion(self, orchestrator, tmp_path):
-        """Test complete document ingestion."""
-        # Create test document
-        doc_path = tmp_path / "test.txt"
-        doc_path.write_text("Test contract content")
-        
-        # Ingest
-        result = orchestrator.ingest_document(
-            file_path=str(doc_path),
-            graph_uri="http://test.org/contracts"
-        )
-        
-        # Verify
-        assert result.success
-        assert result.clauses_extracted > 0
-        assert result.triples_loaded > 0
+@pytest.fixture
+def settings():
+    """Provide test settings"""
+    return get_settings()
+
+@pytest.fixture
+def sample_text():
+    """Provide sample contract text"""
+    return """
+    PAYMENT TERMS
+    Payment shall be made within 30 days.
+    """
+
+def test_with_fixtures(settings, sample_text):
+    """Test using fixtures"""
+    assert settings is not None
+    assert len(sample_text) > 0
 ```
 
-### Fixtures
-
-Reusable test data and setup:
+### Async Tests
 
 ```python
 import pytest
-from pathlib import Path
 
-@pytest.fixture
-def sample_contract():
-    """Sample contract data."""
-    return {
-        "id": "ABC123",
-        "text": "Sample contract text...",
-        "parties": ["IBM", "Acme Corp"]
-    }
-
-@pytest.fixture
-def test_document(tmp_path):
-    """Create temporary test document."""
-    doc_path = tmp_path / "contract.txt"
-    doc_path.write_text("Test contract content")
-    return doc_path
-
-@pytest.fixture(scope="session")
-def fuseki_client():
-    """Fuseki client for testing."""
-    from storage.sparql.fuseki_store import FusekiStore
-    
-    client = FusekiStore(
-        endpoint="http://localhost:3030/test",
-        graph_uri="http://test.org/contracts"
-    )
-    
-    yield client
-    
-    # Cleanup
-    client.clear_graph()
+@pytest.mark.asyncio
+async def test_async_operation():
+    """Test async function"""
+    result = await some_async_function()
+    assert result is not None
 ```
 
 ### Parametrized Tests
 
-Test multiple scenarios:
-
 ```python
 import pytest
 
-@pytest.mark.parametrize("text,expected_count", [
-    ("Clause 1. Termination", 1),
-    ("Clause 1. Termination\nClause 2. Payment", 2),
-    ("", 0),
+@pytest.mark.parametrize("input,expected", [
+    ("contract.pdf", "pdf"),
+    ("document.docx", "docx"),
+    ("spreadsheet.xlsx", "xlsx"),
 ])
-def test_clause_count(text, expected_count):
-    """Test clause extraction with different inputs."""
-    agent = ClauseExtractionAgent()
-    clauses = agent.extract_clauses(text)
-    assert len(clauses) == expected_count
+def test_file_extension(input, expected):
+    """Test file extension detection"""
+    ext = get_extension(input)
+    assert ext == expected
 ```
 
-### Mocking
-
-Mock external dependencies:
+### Mocking External Services
 
 ```python
+import pytest
 from unittest.mock import Mock, patch
-import pytest
 
-def test_with_mock_llm():
-    """Test agent with mocked LLM."""
-    mock_llm = Mock()
-    mock_llm.invoke.return_value.content = "Mocked response"
-    
-    agent = ClauseExtractionAgent(llm=mock_llm)
-    result = agent.extract_clauses("Test text")
-    
-    mock_llm.invoke.assert_called_once()
-
-@patch('agents.ingestion.document_ingestion.extract_text')
-def test_with_patched_function(mock_extract):
-    """Test with patched function."""
-    mock_extract.return_value = "Extracted text"
-    
-    agent = DocumentIngestionAgent()
-    result = agent.process("test.pdf")
-    
-    assert result.text == "Extracted text"
-```
-
-## Test Markers
-
-Mark tests for selective execution:
-
-```python
-import pytest
-
-@pytest.mark.unit
-def test_unit():
-    """Unit test."""
-    pass
-
-@pytest.mark.integration
-def test_integration():
-    """Integration test."""
-    pass
-
-@pytest.mark.slow
-def test_slow_operation():
-    """Slow test."""
-    pass
-
-@pytest.mark.skip(reason="Not implemented yet")
-def test_future_feature():
-    """Future test."""
-    pass
-
-@pytest.mark.skipif(
-    not has_gpu(),
-    reason="Requires GPU"
-)
-def test_gpu_operation():
-    """GPU test."""
-    pass
+@pytest.mark.asyncio
+async def test_with_mock():
+    """Test with mocked service"""
+    with patch('fuseki_client.FusekiClient') as mock_client:
+        mock_client.return_value.query.return_value = [
+            {"contract": "ABC123"}
+        ]
+        
+        result = await query_contracts()
+        assert len(result) == 1
 ```
 
 ## Test Configuration
 
 ### pytest.ini
 
-```ini
-[pytest]
-testpaths = tests
-python_files = test_*.py
-python_classes = Test*
-python_functions = test_*
+Located in `agents/pyproject.toml`:
 
-markers =
-    unit: Unit tests
-    integration: Integration tests
-    slow: Slow tests
-    gpu: Tests requiring GPU
-
-addopts =
-    -v
-    --strict-markers
-    --tb=short
-    --cov=agents/src
-    --cov-report=term-missing
+```toml
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+asyncio_mode = "auto"
 ```
 
-### conftest.py
+### Coverage Configuration
 
-Shared fixtures and configuration:
+```toml
+[tool.coverage.run]
+source = ["src"]
+omit = [
+    "*/tests/*",
+    "*/test_*.py",
+]
 
-```python
-# tests/conftest.py
-import pytest
-from pathlib import Path
-
-@pytest.fixture(scope="session")
-def test_data_dir():
-    """Test data directory."""
-    return Path(__file__).parent / "data"
-
-@pytest.fixture(autouse=True)
-def reset_environment():
-    """Reset environment before each test."""
-    # Setup
-    yield
-    # Teardown
-```
-
-## Coverage
-
-### Measuring Coverage
-
-```bash
-# Run with coverage
-uv run pytest --cov=agents/src
-
-# Generate HTML report
-uv run pytest --cov=agents/src --cov-report=html
-
-# Show missing lines
-uv run pytest --cov=agents/src --cov-report=term-missing
-```
-
-### Coverage Goals
-
-- **Overall:** >80%
-- **Critical paths:** >90%
-- **New code:** 100%
-
-### Excluding Code
-
-```python
-def debug_function():  # pragma: no cover
-    """Debug function not tested."""
-    print("Debug info")
-```
-
-## Performance Testing
-
-### Timing Tests
-
-```python
-import time
-import pytest
-
-def test_performance():
-    """Test performance requirements."""
-    agent = ClauseExtractionAgent()
-    
-    start = time.time()
-    result = agent.extract_clauses(large_text)
-    duration = time.time() - start
-    
-    assert duration < 5.0  # Must complete in 5 seconds
-```
-
-### Benchmarking
-
-```python
-import pytest
-
-@pytest.mark.benchmark
-def test_benchmark(benchmark):
-    """Benchmark clause extraction."""
-    agent = ClauseExtractionAgent()
-    
-    result = benchmark(agent.extract_clauses, test_text)
-    
-    assert result is not None
-```
-
-## Test Data
-
-### YAML Test Cases
-
-```yaml
-# tests/test_cases/test_cases_simple.yaml
-test_cases:
-  - name: "Simple contract query"
-    query: "List all contracts"
-    expected_intent: "list_contracts"
-    expected_complexity: "simple"
-    
-  - name: "Find specific contract"
-    query: "Find contract ABC123"
-    expected_intent: "find_contract"
-    expected_complexity: "simple"
-```
-
-### Loading Test Cases
-
-```python
-import yaml
-import pytest
-
-def load_test_cases(file_path):
-    """Load test cases from YAML."""
-    with open(file_path) as f:
-        data = yaml.safe_load(f)
-    return data['test_cases']
-
-@pytest.mark.parametrize(
-    "test_case",
-    load_test_cases("tests/test_cases/test_cases_simple.yaml")
-)
-def test_from_yaml(test_case):
-    """Test from YAML test case."""
-    classifier = QueryClassifier()
-    
-    intent = classifier.classify(test_case['query'])
-    
-    assert intent == test_case['expected_intent']
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+]
 ```
 
 ## Continuous Integration
 
-### GitHub Actions
+### GitHub Actions Example
 
 ```yaml
-# .github/workflows/test.yml
 name: Tests
 
 on: [push, pull_request]
@@ -455,150 +290,220 @@ jobs:
   test:
     runs-on: ubuntu-latest
     
+    services:
+      fuseki:
+        image: stain/jena-fuseki:latest
+        ports:
+          - 3030:3030
+      
+      milvus:
+        image: milvusdb/milvus:v2.3.4
+        ports:
+          - 19530:19530
+    
     steps:
       - uses: actions/checkout@v3
       
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.11'
+      - name: Install uv
+        run: curl -LsSf https://astral.sh/uv/install.sh | sh
       
       - name: Install dependencies
-        run: |
-          pip install uv
-          cd agents
-          uv sync
+        run: cd agents && uv sync
       
       - name: Run tests
-        run: |
-          cd agents
-          uv run pytest --cov=agents/src --cov-report=xml
+        run: cd agents && PYTHONPATH=src uv run pytest --cov=src --cov-report=xml
       
       - name: Upload coverage
         uses: codecov/codecov-action@v3
         with:
-          file: ./coverage.xml
+          file: ./agents/coverage.xml
 ```
 
 ## Best Practices
 
 ### 1. Test Naming
 
+Use descriptive names:
+
 ```python
-# ✅ Good - descriptive names
-def test_extract_clauses_from_valid_contract():
+# Good
+def test_enhanced_document_ingestion_extracts_text_from_pdf():
     pass
 
-def test_extract_clauses_raises_error_on_empty_text():
-    pass
-
-# ❌ Bad - vague names
-def test_1():
-    pass
-
-def test_extraction():
+# Avoid
+def test_ingestion():
     pass
 ```
 
-### 2. Arrange-Act-Assert
+### 2. Arrange-Act-Assert Pattern
 
 ```python
 def test_clause_extraction():
-    # Arrange
-    agent = ClauseExtractionAgent()
-    text = "Sample contract text"
+    # Arrange: Set up test data
+    agent = ClauseExtractionAgent(settings=get_settings())
+    text = "Payment terms: Net 30 days"
     
-    # Act
-    result = agent.extract_clauses(text)
+    # Act: Execute the function
+    result = await agent.process({"text": text})
     
-    # Assert
-    assert len(result) > 0
-    assert result[0].type == "TerminationClause"
+    # Assert: Verify the result
+    assert len(result.clauses) > 0
+    assert result.clauses[0].clause_type == "payment"
 ```
 
-### 3. One Assertion Per Test
+### 3. Test Independence
+
+Each test should be independent:
 
 ```python
-# ✅ Good - focused tests
-def test_clause_count():
-    clauses = extract_clauses(text)
-    assert len(clauses) == 2
+# Good: Independent tests
+def test_feature_a():
+    result = function_a()
+    assert result == expected_a
 
-def test_clause_types():
-    clauses = extract_clauses(text)
-    assert clauses[0].type == "TerminationClause"
+def test_feature_b():
+    result = function_b()
+    assert result == expected_b
 
-# ❌ Bad - multiple concerns
-def test_everything():
-    clauses = extract_clauses(text)
-    assert len(clauses) == 2
-    assert clauses[0].type == "TerminationClause"
-    assert clauses[1].confidence > 0.8
+# Avoid: Tests depending on each other
+def test_setup():
+    global data
+    data = setup_data()
+
+def test_using_setup():
+    # Depends on test_setup running first
+    assert data is not None
 ```
 
-### 4. Use Fixtures
-
-```python
-# ✅ Good - reusable setup
-@pytest.fixture
-def agent():
-    return ClauseExtractionAgent()
-
-def test_with_fixture(agent):
-    result = agent.extract_clauses(text)
-    assert result is not None
-
-# ❌ Bad - repeated setup
-def test_without_fixture():
-    agent = ClauseExtractionAgent()
-    result = agent.extract_clauses(text)
-    assert result is not None
-```
-
-### 5. Clean Up Resources
+### 4. Use Fixtures for Common Setup
 
 ```python
 @pytest.fixture
-def temp_file(tmp_path):
-    """Create temporary file."""
-    file_path = tmp_path / "test.txt"
-    file_path.write_text("content")
-    
-    yield file_path
-    
-    # Cleanup happens automatically with tmp_path
+def ingestion_agent():
+    """Reusable agent fixture"""
+    return EnhancedDocumentIngestionAgent(settings=get_settings())
+
+def test_pdf_extraction(ingestion_agent):
+    result = await ingestion_agent.process("test.pdf")
+    assert result is not None
+
+def test_docx_extraction(ingestion_agent):
+    result = await ingestion_agent.process("test.docx")
+    assert result is not None
 ```
+
+### 5. Test Error Conditions
+
+```python
+def test_invalid_file_format():
+    """Test handling of invalid file format"""
+    agent = EnhancedDocumentIngestionAgent(settings=get_settings())
+    
+    with pytest.raises(ValueError):
+        await agent.process("invalid.xyz")
+
+def test_missing_file():
+    """Test handling of missing file"""
+    agent = EnhancedDocumentIngestionAgent(settings=get_settings())
+    
+    with pytest.raises(FileNotFoundError):
+        await agent.process("nonexistent.pdf")
+```
+
+## Debugging Tests
+
+### Run with Debug Output
+
+```bash
+PYTHONPATH=src uv run pytest -vv --tb=long
+```
+
+### Use pdb for Debugging
+
+```python
+def test_with_debugger():
+    result = some_function()
+    import pdb; pdb.set_trace()  # Breakpoint
+    assert result is not None
+```
+
+### Print Statements
+
+```bash
+PYTHONPATH=src uv run pytest -s  # Show print statements
+```
+
+## Performance Testing
+
+### Measure Test Duration
+
+```bash
+PYTHONPATH=src uv run pytest --durations=10
+```
+
+### Profile Tests
+
+```bash
+PYTHONPATH=src uv run pytest --profile
+```
+
+## Test Data
+
+### Sample Files
+
+Located in `examples/` directory:
+
+- PDF contracts
+- DOCX documents
+- Excel spreadsheets
+- Email files (.eml)
+
+### Test Fixtures
+
+Located in `tests/fixtures/`:
+
+- Sample contract text
+- Mock responses
+- Test configurations
 
 ## Troubleshooting
 
-### Tests Failing Locally
+### Common Issues
 
-1. Check dependencies: `uv sync`
-2. Clear cache: `pytest --cache-clear`
-3. Run with verbose: `pytest -vv`
-4. Check environment variables
+**Issue**: Tests fail with "ModuleNotFoundError"
 
-### Flaky Tests
+**Solution**: Set PYTHONPATH
 
-```python
-# Retry flaky tests
-@pytest.mark.flaky(reruns=3)
-def test_flaky_operation():
-    pass
+```bash
+PYTHONPATH=src uv run pytest
 ```
 
-### Debugging Tests
+**Issue**: Integration tests fail
 
-```python
-# Add breakpoint
-import pdb; pdb.set_trace()
+**Solution**: Ensure services are running
 
-# Or use pytest debugger
-pytest --pdb  # Drop into debugger on failure
+```bash
+make services-up
+make health
 ```
+
+**Issue**: Async tests not running
+
+**Solution**: Install pytest-asyncio
+
+```bash
+uv add --dev pytest-asyncio
+```
+
+## Next Steps
+
+1. **Increase Coverage**: Target 35-40% coverage
+2. **Add Integration Tests**: Test full pipelines
+3. **Performance Tests**: Benchmark critical paths
+4. **CI/CD Integration**: Automate testing
 
 ## See Also
 
-- [Contributing Guide](../development/contributing.md)
-- [Deployment Guide](../development/deployment.md)
-- [Performance Optimizations](../performance/optimizations.md)
+- [API Reference](../api/agents/ingestion.md)
+- [Development Guide](contributing.md)
+- [Deployment Guide](deployment.md)

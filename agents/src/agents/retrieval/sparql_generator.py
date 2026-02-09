@@ -3,6 +3,7 @@ SPARQL Generator Agent - Converts natural language to SPARQL queries.
 """
 
 import json
+import re
 import hashlib
 from datetime import datetime
 from pathlib import Path
@@ -14,7 +15,6 @@ from pydantic import BaseModel, Field
 
 from agents.shared.base import BaseAgent
 from agents.retrieval.query_classifier import QueryClassifier
-from agents.retrieval.sparql_templates import TemplateSPARQLGenerator
 from storage.sparql.base import SPARQLStore
 from service_factory import get_service_factory
 from ontology_manager import get_ontology_manager, initialize_ontology
@@ -164,60 +164,76 @@ CRITICAL: Do not include GRAPH clauses; the system adds them. Use proc: prefix f
     GENERATION_PROMPT = ChatPromptTemplate.from_messages([
         ("system", """You are an expert SPARQL query generator for procurement contract knowledge graphs.
 
+USE CHAIN-OF-THOUGHT REASONING to build correct queries:
+
+STEP 1: ANALYZE THE QUESTION
+- What is being asked? (entities, properties, relationships)
+- What entity types are mentioned? (Contract, Clause, Risk, Party, etc.)
+- What specific clause types? (TerminationClause, PaymentClause, etc.)
+- What properties are needed? (noticePeriod, severity, rawText, etc.)
+- What relationships? (hasClause, hasRisk, hasParty, etc.)
+
+STEP 2: MAP TO ONTOLOGY
 {ontology_context}
 
-Generate SPARQL queries based on natural language questions.
-Use the prefixes:
-- PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
-- PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-- PREFIX proc: <http://procurement.kg/ontology#>
-- PREFIX contract: <http://procurement.kg/contract#>
-- PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+STEP 3: BUILD THE QUERY
+Use these prefixes:
+PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+PREFIX proc: <http://procurement.kg/ontology#>
 
-CRITICAL RULES - FOLLOW THESE EXACTLY:
-1. **Balanced Braces**: Every opening brace {{ must have a matching closing brace }}
-   - WHERE {{ ... }} must be properly closed with }}
-   - Count braces carefully: SELECT ... WHERE {{ ... }}
-   - Example: SELECT ?x WHERE {{ ?x a proc:Contract . }}
+CRITICAL MAPPING RULES:
+1. **Entity Type Precision** - BE VERY CAREFUL:
+   - "termination clauses" → proc:TerminationClause (NOT proc:Contract!)
+   - "payment terms/clauses" → proc:PaymentClause (NOT proc:Contract!)
+   - "penalty clauses" → proc:PenaltyClause (NOT proc:Contract!)
+   - "risks" → proc:Risk (separate entity)
+   - "contracts" → proc:Contract (only when asking about contracts themselves)
    
-2. **Complete FILTER Conditions**: FILTER must have a complete condition
-   - CORRECT: FILTER(?value > 30)
-   - CORRECT: FILTER(?value < 100)
-   - CORRECT: FILTER(?var != ?otherVar)
-   - WRONG: FILTER(?value <  (incomplete!)
-   - WRONG: FILTER(?value >  (missing value!)
+2. **Property Names** (exact camelCase):
+   - proc:noticePeriod (NOT noticeperiod or notice_period)
+   - proc:rawText (NOT text or content)
+   - proc:hasRisk (NOT risk)
+   - proc:severity (on Risk entities)
+   - rdfs:label (for human-readable names)
    
-3. **Proper SPARQL Syntax**:
-   - Always include WHERE clause for SELECT queries
-   - Use semicolons (;) to chain properties: ?var a proc:Class ; proc:property ?value .
-   - Use periods (.) to end triple patterns
-   - Use proper URIs: <http://procurement.kg/ontology#Class> or proc:Class (with prefix)
-   
-4. **URI Format**: 
-   - Use angle brackets for full URIs: <http://procurement.kg/ontology#Contract>
-   - Or use prefixes: proc:Contract (if PREFIX proc: is declared)
-   - NEVER leave angle brackets unbalanced: <http://... (missing closing >)
-   
-5. **DO NOT include GRAPH clauses**: The system will automatically add GRAPH clauses if needed.
-   - DO NOT write: WHERE {{ GRAPH <uri> {{ ... }} }}
-   - DO write: WHERE {{ ... }}
-   - The system handles graph wrapping automatically
-   
-6. **Return Format**: Return ONLY the SPARQL query, no markdown, no explanation, no code blocks
+3. **Relationships**:
+   - Contract → Clause: ?contract proc:hasClause ?clause
+   - Clause → Risk: ?clause proc:hasRisk ?risk
+   - Contract → Party: ?contract proc:hasParty ?party
 
-VALIDATION CHECKLIST (verify before returning):
-✓ All braces are balanced: count {{ and }} - they must match exactly
-✓ All FILTER conditions are complete with values
-✓ All angle brackets in URIs are closed: <...>
-✓ WHERE clause is present for SELECT queries
-✓ Query ends with proper closing brace for WHERE
-✓ NO GRAPH clauses in the query (we add them automatically)
+4. **Handle Missing Data**:
+   - Use OPTIONAL for properties that might not exist
+   - Example: OPTIONAL {{ ?clause proc:rawText ?text }}
+   - Always include rdfs:label as fallback
+
+5. **Syntax Rules**:
+   - NO GRAPH clauses (system adds them)
+   - Balanced braces: WHERE {{ ... }}
+   - Complete FILTER conditions
+   - Return ONLY the query
+
+EXAMPLE REASONING:
+Q: "What are the termination clauses?"
+→ Entity: TerminationClause (NOT Contract!)
+→ Properties: rdfs:label (names)
+→ Query:
+SELECT ?clause ?label
+WHERE {{
+    ?clause a proc:TerminationClause .
+    OPTIONAL {{ ?clause rdfs:label ?label }}
+}}
 """),
         ("human", """Generate a SPARQL query for this question:
 
 {question}
 
-Return only the SPARQL query (no markdown, no explanation)."""),
+Think step-by-step:
+1. What entity type? (TerminationClause, PaymentClause, Risk, Contract?)
+2. What properties? (noticePeriod, severity, rawText, label?)
+3. What relationships? (hasClause, hasRisk?)
+
+Return ONLY the SPARQL query (no markdown, no explanation)."""),
     ])
 
     EXPLANATION_PROMPT = ChatPromptTemplate.from_messages([
@@ -233,14 +249,14 @@ Provide a brief, clear explanation."""),
     _query_cache: dict[str, str] = {}
     
     def __init__(self, sparql_store: SPARQLStore | None = None, enable_caching: bool = True,
-                 enable_templates: bool = True, **kwargs: Any):
+                 enable_templates: bool = False, **kwargs: Any):
         """
         Initialize with optional SPARQL store (dependency injection).
         
         Args:
             sparql_store: SPARQL store instance (injected via dependency injection)
             enable_caching: Enable query caching for performance
-            enable_templates: Enable template-based SPARQL generation
+            enable_templates: Enable template-based SPARQL generation (DISABLED by default for agentic approach)
             **kwargs: Additional arguments passed to BaseAgent
         """
         super().__init__(**kwargs)
@@ -254,9 +270,9 @@ Provide a brief, clear explanation."""),
         # Initialize query classifier
         self.query_classifier = QueryClassifier(settings=self.settings)
         self.enable_caching = enable_caching
-        # Initialize template generator
-        self.enable_templates = enable_templates
-        self.template_generator = TemplateSPARQLGenerator() if enable_templates else None
+        # Templates DISABLED - using LLM-based agentic approach
+        self.enable_templates = False  # Force disable templates
+        self.template_generator = None
 
     async def process(self, input_data: str) -> SPARQLQuery:
         """
@@ -299,33 +315,18 @@ Provide a brief, clear explanation."""),
             self.log_complete("sparql_generation", query_type=result.query_type, cached=True)
             return result
         
-        # Try template-based generation first (FAST PATH)
-        query = None
-        used_template = False
+        # Use LLM-based agentic SPARQL generation (templates disabled)
+        logger.info("Using LLM-based agentic SPARQL generation with reasoning")
+        generation_chain = self.GENERATION_PROMPT | self.llm | StrOutputParser()
         
-        if self.enable_templates and self.template_generator:
-            query, used_template = await self.template_generator.generate_sparql(question)
-            
-            if used_template:
-                logger.info(
-                    "Template-based SPARQL generated",
-                    question=question[:50],
-                    template_hit_rate=f"{self.template_generator.get_hit_rate():.1%}",
-                )
-        
-        # Fallback to LLM generation if no template match
-        if query is None:
-            logger.info("Using LLM for SPARQL generation (no template match)")
-            generation_chain = self.GENERATION_PROMPT | self.llm | StrOutputParser()
-            
-            try:
-                query = await generation_chain.ainvoke({
-                    "ontology_context": self._get_ontology_context(),
-                    "question": question,
-                })
-            except Exception as e:
-                logger.error("LLM SPARQL generation failed", error=str(e))
-                raise
+        try:
+            query = await generation_chain.ainvoke({
+                "ontology_context": self._get_ontology_context(),
+                "question": question,
+            })
+        except Exception as e:
+            logger.error("LLM SPARQL generation failed", error=str(e))
+            raise
         
         # Continue with existing logic
         try:
@@ -378,6 +379,14 @@ Provide a brief, clear explanation."""),
                 self.explanation_builder.add_metadata("query_explanation", explanation)
                 # Save explanation
                 self._save_explanation()
+            
+            # Log the actual SPARQL query for debugging
+            logger.info(
+                "Generated SPARQL query",
+                question=question[:100],
+                query_type=query_type,
+                query=query,
+            )
             
             self.log_complete("sparql_generation", query_type=query_type)
             
@@ -524,10 +533,20 @@ Provide a brief, clear explanation."""),
                 "query_length": len(query),
             }
             
-            # JSON logging disabled - using Phoenix tracing instead
-            self.logger.debug("SPARQL query logging (file disabled, using Phoenix)",
-                            query_type=query_type, result_count=result_count)
-            return None
+            # Log the actual SPARQL query for debugging
+            self.logger.info(
+                f"SPARQL Query Generated:\n{query}\n",
+                query_type=query_type,
+                result_count=result_count,
+                validation_passed=validation_passed
+            )
+            
+            # Also write to JSON file for detailed analysis
+            log_file = log_dir / "sparql_queries.jsonl"
+            with open(log_file, "a") as f:
+                f.write(json.dumps(log_entry) + "\n")
+            
+            return log_file
             
         except Exception as e:
             self.logger.warning("Failed to log SPARQL query", error=str(e))
@@ -535,14 +554,24 @@ Provide a brief, clear explanation."""),
 
     def _validate_sparql_query(self, query: str) -> tuple[bool, str | None]:
         """
-        Validate SPARQL query syntax and structure.
+        Validate SPARQL query for common issues.
         
-        Args:
-            query: SPARQL query to validate
-            
         Returns:
-            Tuple of (is_valid, error_message)
+            (is_valid, error_message)
         """
+        # Check for unresolved placeholders
+        placeholder_patterns = [
+            r'\[[\w\s_]+\]',  # [Contract_ID], [Specific X]
+            r'<[\w\s_]+>(?![:/])',  # <Contract_ID> but not <http://...>
+            r'"Specific\s+\w+"',  # "Specific Jurisdiction"
+            r'FILTER.*=.*"Specific',  # FILTER with "Specific X"
+        ]
+        
+        for pattern in placeholder_patterns:
+            if re.search(pattern, query):
+                return False, f"Query contains placeholder: {pattern}"
+        
+        # Continue with original validation
         if not query or not query.strip():
             return False, "Query is empty"
         
@@ -918,23 +947,109 @@ Provide a brief, clear explanation."""),
                                     break
                         
                         if where_close_pos is not None:
+                            # #region agent log
+                            import json
+                            with open('/Users/manu/Documents/repos/contract-jena/.cursor/debug.log', 'a') as f:
+                                f.write(json.dumps({
+                                    'sessionId': 'debug-session',
+                                    'runId': 'run1',
+                                    'hypothesisId': 'A',
+                                    'location': 'sparql_generator.py:353',
+                                    'message': 'Before splitting query',
+                                    'data': {
+                                        'where_brace_pos': where_brace_pos,
+                                        'where_close_pos': where_close_pos,
+                                        'query_length': len(final_query),
+                                        'query_end_preview': final_query[max(0, where_close_pos-50):where_close_pos+10]
+                                    },
+                                    'timestamp': __import__('time').time() * 1000
+                                }) + '\n')
+                            # #endregion
+                            
                             # Split query into parts
                             prefix = final_query[:where_brace_pos + 1]  # Up to and including "WHERE {"
                             where_body = final_query[where_brace_pos + 1:where_close_pos]  # Content inside WHERE
                             suffix = final_query[where_close_pos + 1:]  # Everything after closing }
                             
+                            # #region agent log
+                            with open('/Users/manu/Documents/repos/contract-jena/.cursor/debug.log', 'a') as f:
+                                f.write(json.dumps({
+                                    'sessionId': 'debug-session',
+                                    'runId': 'run1',
+                                    'hypothesisId': 'B',
+                                    'location': 'sparql_generator.py:360',
+                                    'message': 'After splitting query parts',
+                                    'data': {
+                                        'prefix_end': repr(prefix[-30:]),
+                                        'where_body_preview': repr(where_body[:50]),
+                                        'where_body_end': repr(where_body[-30:]),
+                                        'suffix': repr(suffix),
+                                        'suffix_length': len(suffix)
+                                    },
+                                    'timestamp': __import__('time').time() * 1000
+                                }) + '\n')
+                            # #endregion
+                            
                             # Clean and wrap
                             body_clean = where_body.strip()
+                            
+                            # #region agent log
+                            with open('/Users/manu/Documents/repos/contract-jena/.cursor/debug.log', 'a') as f:
+                                f.write(json.dumps({
+                                    'sessionId': 'debug-session',
+                                    'runId': 'run1',
+                                    'hypothesisId': 'C',
+                                    'location': 'sparql_generator.py:375',
+                                    'message': 'Before reconstruction',
+                                    'data': {
+                                        'body_clean_preview': repr(body_clean[:50]),
+                                        'body_clean_end': repr(body_clean[-30:]),
+                                        'graph_uri': graph_uri
+                                    },
+                                    'timestamp': __import__('time').time() * 1000
+                                }) + '\n')
+                            # #endregion
                             
                             # Reconstruct: WHERE { GRAPH <uri> { body } }
                             graph_open = "\n  GRAPH <" + graph_uri + "> {\n    "
                             graph_close = "\n  }\n"
                             where_close = "}"
                             
+                            # Debug: Print to stderr so we can see it
+                            import sys
+                            print(f"DEBUG: prefix ends with: {repr(prefix[-30:])}", file=sys.stderr)
+                            print(f"DEBUG: body_clean ends with: {repr(body_clean[-30:])}", file=sys.stderr)
+                            print(f"DEBUG: suffix = {repr(suffix)}", file=sys.stderr)
+                            print(f"DEBUG: graph_close = {repr(graph_close)}", file=sys.stderr)
+                            print(f"DEBUG: where_close = {repr(where_close)}", file=sys.stderr)
+                            
                             # Build parts separately to verify
                             part1 = prefix + graph_open + body_clean
                             part2 = graph_close + where_close + suffix
                             final_query = part1 + part2
+                            
+                            print(f"DEBUG: After reconstruction - Opens: {final_query.count('{')}, Closes: {final_query.count('}')}", file=sys.stderr)
+                            print(f"DEBUG: Query ends with: {repr(final_query[-100:])}", file=sys.stderr)
+                            
+                            # #region agent log
+                            with open('/Users/manu/Documents/repos/contract-jena/.cursor/debug.log', 'a') as f:
+                                f.write(json.dumps({
+                                    'sessionId': 'debug-session',
+                                    'runId': 'run1',
+                                    'hypothesisId': 'D',
+                                    'location': 'sparql_generator.py:395',
+                                    'message': 'After reconstruction',
+                                    'data': {
+                                        'opens': final_query.count('{'),
+                                        'closes': final_query.count('}'),
+                                        'query_end': repr(final_query[-150:]),
+                                        'graph_open': repr(graph_open),
+                                        'graph_close': repr(graph_close),
+                                        'where_close': repr(where_close)
+                                    },
+                                    'timestamp': __import__('time').time() * 1000
+                                }) + '\n')
+                            # #endregion
                             
                             # Verify braces are balanced
                             opens = final_query.count('{')
@@ -1028,62 +1143,128 @@ Provide a brief, clear explanation."""),
                 "validation_error": validation_error,
             }
         
-        # Execute query
+        # Execute query with retry logic
         results = []
         execution_error = None
-        try:
-            self.logger.debug("Executing SPARQL query", query_type=sparql_query.query_type)
-            
-            if sparql_query.query_type == "SELECT" or sparql_query.query_type == "UNKNOWN":
-                # Try SELECT for unknown queries (most common)
-                results = self.sparql_store.execute_select(final_query)
-                self.logger.info(
-                    "SPARQL SELECT executed successfully",
-                    result_count=len(results),
-                    question=question[:100],
-                )
-            elif sparql_query.query_type == "ASK":
-                ask_result = self.sparql_store.execute_ask(final_query)
-                results = [{"result": ask_result}]
-                self.logger.info(
-                    "SPARQL ASK executed successfully",
-                    result=ask_result,
-                    question=question[:100],
-                )
-            else:
-                results = [{"info": f"Query type {sparql_query.query_type} - manual review needed"}]
-                self.logger.warning(
-                    "Unsupported query type",
+        max_retries = 3
+        
+        for attempt in range(max_retries):
+            try:
+                if attempt > 0:
+                    self.logger.info(
+                        f"Retry attempt {attempt + 1}/{max_retries} - "
+                        "Regenerating SPARQL query"
+                    )
+                    # Regenerate query on retry
+                    sparql_query = await self.process(question)
+                    final_query = sparql_query.query
+                    
+                    # Re-apply graph wrapping if needed
+                    if not graph_uri:
+                        query_upper = final_query.upper()
+                        if "FROM" not in query_upper and "GRAPH" not in query_upper:
+                            if "SELECT" in query_upper:
+                                import re
+                                where_match = re.search(
+                                    r'\bWHERE\s*\{',
+                                    final_query,
+                                    re.IGNORECASE | re.MULTILINE
+                                )
+                                if where_match:
+                                    where_start = where_match.start()
+                                    where_brace_start = where_match.end() - 1
+                                    brace_count = 1
+                                    where_brace_end = None
+                                    for i in range(where_brace_start + 1, len(final_query)):
+                                        if final_query[i] == '{':
+                                            brace_count += 1
+                                        elif final_query[i] == '}':
+                                            brace_count -= 1
+                                            if brace_count == 0:
+                                                where_brace_end = i
+                                                break
+                                    if where_brace_end:
+                                        before_where = final_query[:where_start]
+                                        where_keyword = final_query[where_start:where_brace_start+1]
+                                        where_body = final_query[where_brace_start+1:where_brace_end]
+                                        after_where = final_query[where_brace_end:]
+                                        final_query = (
+                                            before_where +
+                                            where_keyword + "\n    GRAPH ?g {\n      " +
+                                            where_body + "\n    }\n  " +
+                                            after_where
+                                        )
+                
+                self.logger.debug(
+                    "Executing SPARQL query",
                     query_type=sparql_query.query_type,
-                    question=question[:100],
+                    attempt=attempt + 1
                 )
-        except Exception as e:
-            execution_error = str(e)
-            error_details = {
-                "error": execution_error,
-                "error_type": type(e).__name__,
-                "query": final_query[:500],  # Log first 500 chars of query
-            }
-            
-            # Provide more detailed error information
-            if "syntax" in execution_error.lower() or "parse" in execution_error.lower():
-                error_details["suggestion"] = "Check SPARQL syntax - may need to review query structure"
-            elif "timeout" in execution_error.lower():
-                error_details["suggestion"] = "Query timed out - may be too complex or dataset too large"
-            elif "401" in execution_error or "unauthorized" in execution_error.lower():
-                error_details["suggestion"] = "Authentication failed - check Fuseki credentials"
-            elif "404" in execution_error or "not found" in execution_error.lower():
-                error_details["suggestion"] = "Endpoint not found - check Fuseki URL and dataset name"
-            
-            self.logger.error(
-                "SPARQL query execution failed",
-                question=question[:100],
-                error=execution_error,
-                error_type=type(e).__name__,
-                query_preview=final_query[:200],
-                **error_details,
-            )
-            results = [error_details]
+                
+                if sparql_query.query_type == "SELECT" or sparql_query.query_type == "UNKNOWN":
+                    # Try SELECT for unknown queries (most common)
+                    results = self.sparql_store.execute_select(final_query)
+                    self.logger.info(
+                        "SPARQL SELECT executed successfully",
+                        result_count=len(results),
+                        question=question[:100],
+                        attempt=attempt + 1
+                    )
+                    break  # Success - exit retry loop
+                elif sparql_query.query_type == "ASK":
+                    ask_result = self.sparql_store.execute_ask(final_query)
+                    results = [{"result": ask_result}]
+                    self.logger.info(
+                        "SPARQL ASK executed successfully",
+                        result=ask_result,
+                        question=question[:100],
+                        attempt=attempt + 1
+                    )
+                    break  # Success - exit retry loop
+                else:
+                    results = [{"info": f"Query type {sparql_query.query_type} - manual review needed"}]
+                    self.logger.warning(
+                        "Unsupported query type",
+                        query_type=sparql_query.query_type,
+                        question=question[:100],
+                    )
+                    break  # Don't retry unsupported types
+                    
+            except Exception as e:
+                execution_error = str(e)
+                self.logger.warning(
+                    f"SPARQL execution failed (attempt {attempt + 1}/{max_retries})",
+                    error=execution_error,
+                    query_preview=final_query[:200]
+                )
+                
+                # If this was the last attempt, handle the error
+                if attempt == max_retries - 1:
+                    error_details = {
+                        "error": execution_error,
+                        "error_type": type(e).__name__,
+                        "query": final_query[:500],
+                    }
+                    
+                    # Provide more detailed error information
+                    if "syntax" in execution_error.lower() or "parse" in execution_error.lower():
+                        error_details["suggestion"] = "Check SPARQL syntax - may need to review query structure"
+                    elif "timeout" in execution_error.lower():
+                        error_details["suggestion"] = "Query timed out - may be too complex or dataset too large"
+                    elif "401" in execution_error or "unauthorized" in execution_error.lower():
+                        error_details["suggestion"] = "Authentication failed - check Fuseki credentials"
+                    elif "404" in execution_error or "not found" in execution_error.lower():
+                        error_details["suggestion"] = "Endpoint not found - check Fuseki URL and dataset name"
+                    
+                    self.logger.error(
+                        "SPARQL query execution failed",
+                        question=question[:100],
+                        error=execution_error,
+                        error_type=type(e).__name__,
+                        query_preview=final_query[:200],
+                        **error_details,
+                    )
+                    results = [error_details]
         
         result_count = len(results) if results and not any("error" in r for r in results) else 0
         

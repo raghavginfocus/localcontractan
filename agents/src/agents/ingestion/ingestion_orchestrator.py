@@ -23,6 +23,7 @@ from agents.ingestion.validation_agent import ValidationAgent, ValidationResult
 from agents.ingestion.fuseki_loader import FusekiLoaderAgent, LoadResult
 from agents.ingestion.reasoning_agent import ReasoningAgent, ReasoningResult
 from agents.ingestion.vector_index import VectorIndexAgent, IndexResult
+from agents.ingestion.ontology_sync_agent import OntologySyncAgent
 from agents.schema_evolution.ontology_designer import OntologyDesignerAgent
 from agents.schema_evolution.rule_generator import RuleGeneratorAgent, RulePattern
 from agents.schema_evolution.shacl_generator import SHACLGeneratorAgent
@@ -54,8 +55,8 @@ class IngestionConfig(BaseModel):
     enable_vector_indexing: bool = True
     log_all_steps: bool = True
     save_artifacts: bool = True  # Save intermediate files for transparency
-    # Use /app/artifacts (writable inside container) instead of data/ which may be read-only
-    artifact_dir: str = "/app/artifacts"  # Directory for artifacts
+    # Use data/generated for all artifacts (consistent with schema evolution agents)
+    artifact_dir: str = "data/generated"  # Directory for artifacts
     generate_owl_extensions: bool = True  # Generate OWL for new concepts
     generate_rules: bool = True  # Generate inference rules for patterns
     generate_shacl: bool = True  # Generate SHACL validation shapes
@@ -212,6 +213,7 @@ class IngestionOrchestrator:
         self.fuseki_agent = FusekiLoaderAgent(sparql_store=sparql_store, settings=self.settings)
         self.reasoning_agent = ReasoningAgent(sparql_store=sparql_store, settings=self.settings)
         self.vector_agent = VectorIndexAgent(vector_store=vector_store, settings=self.settings)
+        self.ontology_sync_agent = OntologySyncAgent(sparql_store=sparql_store, settings=self.settings)
         
         # Initialize schema evolution agents
         self.ontology_designer = OntologyDesignerAgent(
@@ -858,17 +860,25 @@ class IngestionOrchestrator:
                         suggestion_key = (suggestion.name, suggestion.suggestion_type)
                         suggestion_owl_map[suggestion_key] = owl_result
                         
-                        # Auto-load the extension into ontology manager
+                        # Sync extension to Fuseki (ADAPTIVE mode)
                         if self.config.ontology_evolution_mode == OntologyEvolutionMode.ADAPTIVE:
                             try:
-                                ontology_manager.load_ontology(
+                                sync_result = await self.ontology_sync_agent.sync_extension(
                                     owl_result.file_path,
-                                    schema_id=f"extension_{document_id}_{suggestion.name}",
-                                    set_active=False  # Don't replace active, just extend
+                                    reload_ontology=False  # Batch reload later
                                 )
-                                logger.info(f"    ✓ OWL loaded into ontology manager")
+                                if sync_result.success:
+                                    logger.info(
+                                        f"    ✓ OWL synced to Fuseki "
+                                        f"({sync_result.triples_loaded} triples)"
+                                    )
+                                else:
+                                    logger.warning(
+                                        f"    ⚠ Failed to sync OWL to Fuseki: "
+                                        f"{sync_result.error}"
+                                    )
                             except Exception as e:
-                                logger.warning(f"    ⚠ Failed to load OWL: {e}")
+                                logger.warning(f"    ⚠ Fuseki sync error: {e}")
                         
                         # Prepare SHACL generation task (depends on OWL)
                         if self.config.generate_shacl:
@@ -1085,6 +1095,46 @@ class IngestionOrchestrator:
                         
                 except Exception as e:
                     logger.warning(f"    ⚠ Schema governance error: {e}")
+            
+            # Final step: Reload ontology from Fuseki if extensions were synced
+            if generated_extensions and self.config.ontology_evolution_mode == OntologyEvolutionMode.ADAPTIVE:
+                try:
+                    logger.info("  → Reloading ontology from Fuseki with all extensions...")
+                    ontology_manager = get_ontology_manager()
+                    await asyncio.to_thread(
+                        ontology_manager.reload_from_fuseki,
+                        self.fuseki_agent.sparql_store,
+                        "http://procurement.org/ontology"
+                    )
+                    logger.info(f"    ✓ Ontology reloaded - retrieval agents can now use new concepts")
+                except Exception as e:
+                    
+                    # Load SHACL shapes and reasoning rules into Fuseki
+                    if generated_shacl or generated_rules:
+                        logger.info("  → Loading SHACL shapes and reasoning rules into Fuseki...")
+                        
+                        # Load SHACL shapes
+                        if generated_shacl:
+                            try:
+                                shacl_stats = await self.ontology_sync_agent.sync_shacl_shapes()
+                                logger.info(
+                                    f"    ✓ SHACL shapes loaded: {shacl_stats['loaded']}/{shacl_stats['total']} "
+                                    f"(failed: {shacl_stats['failed']})"
+                                )
+                            except Exception as e:
+                                logger.warning(f"    ⚠ Failed to load SHACL shapes: {e}")
+                        
+                        # Load reasoning rules
+                        if generated_rules:
+                            try:
+                                rules_stats = await self.ontology_sync_agent.sync_reasoning_rules()
+                                logger.info(
+                                    f"    ✓ Reasoning rules loaded: {rules_stats['loaded']}/{rules_stats['total']} "
+                                    f"(failed: {rules_stats['failed']})"
+                                )
+                            except Exception as e:
+                                logger.warning(f"    ⚠ Failed to load reasoning rules: {e}")
+                    logger.warning(f"    ⚠ Failed to reload ontology: {e}")
             
             step.success = True
             step.result = {

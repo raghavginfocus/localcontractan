@@ -264,7 +264,7 @@ class OntologyManager:
         # Detect format from extension
         format_map = {
             ".ttl": "turtle",
-            ".owl": "xml",
+            ".owl": "turtle",  # Changed: Try Turtle first for .owl files
             ".rdf": "xml",
             ".n3": "n3",
             ".jsonld": "json-ld",
@@ -275,8 +275,29 @@ class OntologyManager:
         try:
             graph.parse(str(path), format=file_format)
         except Exception as e:
-            self.logger.error("Failed to parse ontology", error=str(e), path=str(path))
-            raise
+            # If Turtle fails for .owl, try XML format
+            if path.suffix.lower() == ".owl" and file_format == "turtle":
+                self.logger.warning(
+                    "Turtle parsing failed for .owl file, trying XML format",
+                    path=str(path)
+                )
+                try:
+                    graph.parse(str(path), format="xml")
+                except Exception as xml_error:
+                    self.logger.error(
+                        "Failed to parse ontology in both Turtle and XML formats",
+                        error=str(e),
+                        xml_error=str(xml_error),
+                        path=str(path)
+                    )
+                    raise
+            else:
+                self.logger.error(
+                    "Failed to parse ontology",
+                    error=str(e),
+                    path=str(path)
+                )
+                raise
         
         # Extract version if present
         version = None
@@ -314,17 +335,35 @@ class OntologyManager:
         Load an ontology extension and merge into existing schema.
         
         Args:
-            path: Path to extension OWL file
+            path: Path to extension OWL/TTL file
             merge_into: Schema ID to merge into
         """
         if merge_into not in self.schemas:
             raise ValueError(f"Schema '{merge_into}' not found")
         
+        path = Path(path)
         self.logger.info("Loading ontology extension", path=str(path))
         
-        # Load extension
+        # Load extension with format detection
         ext_graph = Graph()
-        ext_graph.parse(str(path), format="turtle")
+        
+        # Try Turtle first (most common for generated extensions)
+        try:
+            ext_graph.parse(str(path), format="turtle")
+        except Exception as e:
+            # Fallback to XML for .owl files
+            if path.suffix.lower() == ".owl":
+                try:
+                    ext_graph.parse(str(path), format="xml")
+                except Exception:
+                    self.logger.error(
+                        "Failed to parse extension",
+                        error=str(e),
+                        path=str(path)
+                    )
+                    raise
+            else:
+                raise
         
         # Merge into existing schema
         base_schema = self.schemas[merge_into]
@@ -341,6 +380,135 @@ class OntologyManager:
             schema_id=merge_into,
             total_classes=len(base_schema.get_all_classes()),
         )
+    
+    def load_generated_extensions(
+        self,
+        extensions_dir: str | Path,
+        merge_into: str = "default",
+        pattern: str = "*.ttl"
+    ) -> int:
+        """
+        Load all generated ontology extensions from a directory.
+        
+        Args:
+            extensions_dir: Directory containing generated extensions
+            merge_into: Schema ID to merge into
+            pattern: File pattern to match (default: *.ttl)
+            
+        Returns:
+            Number of extensions loaded
+        """
+        extensions_dir = Path(extensions_dir)
+        
+        if not extensions_dir.exists():
+            self.logger.warning(
+                "Extensions directory not found",
+                path=str(extensions_dir)
+            )
+            return 0
+        
+        # Find all extension files
+        extension_files = list(extensions_dir.glob(pattern))
+        
+        if not extension_files:
+            self.logger.info(
+                "No extension files found",
+                path=str(extensions_dir),
+                pattern=pattern
+            )
+            return 0
+        
+        self.logger.info(
+            f"Loading {len(extension_files)} generated extensions",
+            path=str(extensions_dir)
+        )
+        
+        loaded_count = 0
+        for ext_file in extension_files:
+            try:
+                self.load_extension(ext_file, merge_into=merge_into)
+                loaded_count += 1
+            except Exception as e:
+                self.logger.warning(
+                    "Failed to load extension",
+                    file=str(ext_file),
+                    error=str(e)
+                )
+                continue
+        
+        self.logger.info(
+            f"Loaded {loaded_count}/{len(extension_files)} extensions successfully"
+        )
+        
+        return loaded_count
+    
+    def reload_from_fuseki(
+        self,
+        sparql_store: Any,
+        ontology_graph_uri: str = "http://procurement.org/ontology",
+        schema_id: str = "default",
+    ) -> None:
+        """
+        Reload ontology from Fuseki triplestore.
+        
+        This method queries Fuseki for the complete ontology graph and
+        reloads it into memory, ensuring the OntologyManager has the
+        latest schema including any extensions that were added.
+        
+        Args:
+            sparql_store: SPARQL store instance
+            ontology_graph_uri: URI of the ontology graph in Fuseki
+            schema_id: Schema ID to reload (default: "default")
+        """
+        self.logger.info(
+            "Reloading ontology from Fuseki",
+            graph_uri=ontology_graph_uri,
+            schema_id=schema_id
+        )
+        
+        try:
+            # Query Fuseki for all triples in the ontology graph
+            query = f"""
+            CONSTRUCT {{
+                ?s ?p ?o
+            }}
+            WHERE {{
+                GRAPH <{ontology_graph_uri}> {{
+                    ?s ?p ?o
+                }}
+            }}
+            """
+            
+            # Execute query and get graph
+            result_graph = sparql_store.query(query)
+            
+            # Create new schema from the result
+            schema = OntologySchema(
+                graph=result_graph,
+                namespace=self.settings.procurement_namespace,
+                version=None,
+                loaded_at=datetime.now(),
+            )
+            
+            # Update or create schema
+            self.schemas[schema_id] = schema
+            self.active_schema = schema
+            
+            self.logger.info(
+                "Ontology reloaded from Fuseki",
+                schema_id=schema_id,
+                classes=len(schema.get_all_classes()),
+                properties=len(schema.get_all_properties()),
+                triples=len(schema.graph)
+            )
+            
+        except Exception as e:
+            self.logger.error(
+                "Failed to reload ontology from Fuseki",
+                error=str(e),
+                graph_uri=ontology_graph_uri
+            )
+            raise
     
     def get_schema(self, schema_id: str = "default") -> OntologySchema | None:
         """Get a specific schema by ID."""
@@ -460,12 +628,16 @@ def get_ontology_manager() -> OntologyManager:
     return _ontology_manager
 
 
-def initialize_ontology(ontology_path: str | Path | None = None) -> OntologyManager:
+def initialize_ontology(
+    ontology_path: str | Path | None = None,
+    load_extensions: bool = True
+) -> OntologyManager:
     """
-    Initialize the global ontology manager with a base ontology.
+    Initialize the global ontology manager with base ontology and extensions.
     
     Args:
-        ontology_path: Path to base ontology file. If None, uses default from project.
+        ontology_path: Path to base ontology file. If None, uses default.
+        load_extensions: Whether to load generated extensions (default: True)
         
     Returns:
         Initialized OntologyManager
@@ -489,13 +661,36 @@ def initialize_ontology(ontology_path: str | Path | None = None) -> OntologyMana
         if ontology_path is None:
             raise FileNotFoundError("No ontology file found in default locations")
     
+    # Load base ontology
     manager.load_ontology(ontology_path, schema_id="default", set_active=True)
     
     logger.info(
-        "Ontology manager initialized",
+        "Base ontology loaded",
         path=str(ontology_path),
         classes=len(manager.get_active_schema().get_all_classes()),
     )
+    
+    # Load generated extensions if enabled
+    if load_extensions:
+        extensions_paths = [
+            Path("data/generated/ontology"),  # container cwd /app
+            Path("agents/data/generated/ontology"),  # repo root
+        ]
+        
+        for ext_path in extensions_paths:
+            if ext_path.exists():
+                loaded = manager.load_generated_extensions(
+                    ext_path,
+                    merge_into="default"
+                )
+                if loaded > 0:
+                    logger.info(
+                        "Generated extensions loaded",
+                        count=loaded,
+                        total_classes=len(manager.get_active_schema().get_all_classes()),
+                        total_properties=len(manager.get_active_schema().get_all_properties())
+                    )
+                break
     
     return manager
 

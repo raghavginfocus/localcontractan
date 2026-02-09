@@ -96,11 +96,33 @@ COMPLEX queries (need decomposition):
 For SIMPLE queries:
 - Return single step with appropriate query_type (kg_only, vector_only, or hybrid)
 
-For COMPLEX queries:
-- Break into 2-4 sub-queries
-- Each sub-query needs: QUESTION, PURPOSE, TYPE (kg_only/vector_only/hybrid), DEPENDS_ON
-- Start with vector_only for context, then kg_only for structured data
-- Keep it concise and actionable
+For COMPLEX queries - CRITICAL DECOMPOSITION RULES:
+
+**INDEPENDENT QUERIES ONLY:**
+- Each sub-query MUST retrieve ALL relevant data for its topic
+- NO dependencies on previous results
+- NO phrases: "specific", "particular", "from step X", "with Y from previous"
+- Query format: "Find ALL [entity type] for ALL contracts"
+
+**EXAMPLES OF CORRECT DECOMPOSITION:**
+Bad: "Find termination clauses for contracts with high risk"
+Good: "Find ALL termination clauses for ALL contracts"
+
+Bad: "Identify jurisdictions for contracts with specific termination clauses"
+Good: "Find ALL governing jurisdictions for ALL contracts"
+
+Bad: "Analyze liability clauses for contracts in specific jurisdictions"
+Good: "Find ALL liability clauses for ALL contracts"
+
+**EXECUTION:**
+- DEPENDS_ON is for ORDER only (e.g., get clauses before analyzing them)
+- NOT for filtering or passing data
+- Synthesis will combine all results intelligently
+
+**QUERY TYPES:**
+- kg_only: Structured data (contracts, clauses, jurisdictions, risks)
+- vector_only: Text search (clause content, descriptions)
+- hybrid: Both needed
 
 Format your response as:
 

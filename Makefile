@@ -93,6 +93,30 @@ api-build: ## Build agents API Docker image
 	cd $(DOCKER_DIR) && docker-compose build agents-api
 	@echo "$(GREEN)✓ API image built$(NC)"
 
+api-build-optimized: ## Build optimized agents API Docker image (smaller size)
+	@echo "$(BLUE)Building optimized agents API image...$(NC)"
+	cd $(AGENTS_DIR) && docker build -f Dockerfile.optimized -t docker-agents-api:optimized .
+	@echo "$(GREEN)✓ Optimized API image built$(NC)"
+	@echo "$(BLUE)Comparing image sizes:$(NC)"
+	@docker images | grep -E "REPOSITORY|docker-agents-api"
+
+api-build-minimal: ## Build minimal agents API Docker image (aggressive size reduction)
+	@echo "$(BLUE)Building minimal agents API image...$(NC)"
+	@echo "$(YELLOW)This will pre-download the embedding model and remove unused files$(NC)"
+	cd $(AGENTS_DIR) && docker build -f Dockerfile.minimal -t docker-agents-api:minimal .
+	@echo "$(GREEN)✓ Minimal API image built$(NC)"
+	@echo "$(BLUE)Comparing all image sizes:$(NC)"
+	@docker images | grep -E "REPOSITORY|docker-agents-api"
+
+api-build-alpine: ## Build Alpine-based agents API Docker image (smallest base, may have compatibility issues)
+	@echo "$(BLUE)Building Alpine-based agents API image...$(NC)"
+	@echo "$(YELLOW)WARNING: Alpine uses musl libc - some packages may fail to build$(NC)"
+	@echo "$(YELLOW)This build may take 10-15 minutes due to compilation...$(NC)"
+	cd $(AGENTS_DIR) && docker build -f Dockerfile.alpine -t docker-agents-api:alpine .
+	@echo "$(GREEN)✓ Alpine API image built$(NC)"
+	@echo "$(BLUE)Comparing all image sizes:$(NC)"
+	@docker images | grep -E "REPOSITORY|docker-agents-api"
+
 api-up: ## Start agents API service
 	@echo "$(BLUE)Starting agents API...$(NC)"
 	cd $(DOCKER_DIR) && docker-compose up -d agents-api
@@ -151,36 +175,27 @@ data-migrate-milvus: ## Migrate Milvus schema
 
 ##@ Ingestion Pipeline
 
-ingest: ## Run complete ingestion pipeline on all documents
-	@echo "$(BLUE)Running pre-ingestion checks...$(NC)"
-	cd $(AGENTS_DIR) && $(PYTHONPATH) $(PYTHON) ../scripts/ingestion/pre_ingestion_check.py
-	@echo "$(BLUE)Running ingestion pipeline...$(NC)"
-	cd $(AGENTS_DIR) && $(PYTHONPATH) $(PYTHON) ../scripts/ingestion/run_ingestion_pipeline.py
+ingest: ## Run enhanced ingestion pipeline with batch processing (usage: make ingest DIR=examples)
+	@if [ -z "$(DIR)" ]; then \
+		echo "$(YELLOW)No directory specified, using default: examples$(NC)"; \
+		DIR="examples"; \
+	fi; \
+	echo "$(BLUE)Running enhanced ingestion on $$DIR...$(NC)"; \
+	cd $(AGENTS_DIR) && $(PYTHONPATH) $(PYTHON) ../scripts/ingestion/run_enhanced_ingestion.py --directory ../$$DIR
 	@echo "$(GREEN)✓ Ingestion complete$(NC)"
 
-ingest-override: ## Force reprocess all documents (skip duplicate detection)
-	@echo "$(BLUE)Running pre-ingestion checks...$(NC)"
-	cd $(AGENTS_DIR) && $(PYTHONPATH) $(PYTHON) ../scripts/ingestion/pre_ingestion_check.py
-	@echo "$(BLUE)Running ingestion with override...$(NC)"
-	cd $(AGENTS_DIR) && $(PYTHONPATH) $(PYTHON) ../scripts/ingestion/run_ingestion_pipeline.py --override
-	@echo "$(GREEN)✓ Ingestion complete$(NC)"
-
-ingest-single: ## Ingest single document (usage: make ingest-single FILE=path/to/doc.pdf)
-	@if [ -z "$(FILE)" ]; then \
-		echo "$(RED)Error: FILE parameter required$(NC)"; \
-		echo "Usage: make ingest-single FILE=path/to/document.pdf"; \
-		exit 1; \
-	fi
-	@echo "$(BLUE)Ingesting $(FILE)...$(NC)"
-	cd $(AGENTS_DIR) && $(PYTHONPATH) $(PYTHON) ../scripts/ingestion/ingest_single_document.py $(FILE)
+ingest-override: ## Force reprocess all documents (usage: make ingest-override DIR=examples)
+	@if [ -z "$(DIR)" ]; then \
+		echo "$(YELLOW)No directory specified, using default: examples$(NC)"; \
+		DIR="examples"; \
+	fi; \
+	echo "$(BLUE)Running enhanced ingestion with override on $$DIR...$(NC)"; \
+	cd $(AGENTS_DIR) && $(PYTHONPATH) $(PYTHON) ../scripts/ingestion/run_enhanced_ingestion.py --directory ../$$DIR --override
+	@echo "$(GREEN)✓ Ingestion complete (with override)$(NC)"
 
 ingest-test: ## Run full ingestion test
 	@echo "$(BLUE)Running ingestion test...$(NC)"
 	cd $(AGENTS_DIR) && $(PYTHONPATH) $(PYTHON) tests/ingestion/test_full_ingestion.py
-
-ingest-benchmark: ## Benchmark ingestion performance
-	@echo "$(BLUE)Running ingestion benchmark...$(NC)"
-	cd $(AGENTS_DIR) && $(PYTHONPATH) $(PYTHON) ../scripts/benchmark_ingestion.py
 
 ##@ Retrieval
 
@@ -269,6 +284,10 @@ test-complexity: ## Test query complexity detection
 verify: ## Verify complete pipeline
 	@echo "$(BLUE)Verifying pipeline...$(NC)"
 	cd $(AGENTS_DIR) && $(PYTHONPATH) $(PYTHON) ../scripts/data/verify_complete_pipeline.py
+
+verify-data: ## Verify data loaded in Fuseki and Milvus
+	@echo "$(BLUE)Verifying data loaded...$(NC)"
+	cd $(AGENTS_DIR) && $(PYTHONPATH) $(PYTHON) ../scripts/verification/verify_data_loaded.py
 
 verify-fuseki: ## Verify Fuseki data
 	cd $(AGENTS_DIR) && $(PYTHONPATH) $(PYTHON) ../scripts/data/verify_fuseki_data.py

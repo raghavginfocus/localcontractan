@@ -27,20 +27,10 @@ env/
 .coverage
 htmlcov/
 .tox/
-
-# Logs
-logs/
-*.log
-
-# Checkpoints
-checkpoints/
-*.db
-*.db-shm
-*.db-wal
+.hypothesis/
 
 # Documentation
 docs/
-site/
 *.md
 !README.md
 
@@ -53,18 +43,48 @@ site/
 .github/
 .gitlab-ci.yml
 
+# Logs
+logs/
+*.log
+
+# Checkpoints (will be created at runtime)
+checkpoints/
+*.db
+*.db-shm
+*.db-wal
+
+# Data files (should be mounted as volumes)
+data/
+examples/
+
+# Development files
+tests/
+scripts/
+Makefile
+
+# Docker
+Dockerfile*
+docker-compose*.yml
+.dockerignore
+
 # Environment
 .env
 .env.*
 !.env.example
 
-# Data files
-data/
-*.pdf
-*.docx
-*.csv
-
 # Temporary files
 tmp/
 temp/
 *.tmp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Lock files (we copy them explicitly)
+# uv.lock is needed, so don't ignore it
+
+# Backup files
+*.bak
+*.backup
+*~

@@ -1,601 +1,602 @@
 # Ingestion Agents API Reference
 
-API documentation for document ingestion agents.
+Complete API reference for document ingestion agents with examples.
 
-## IngestionOrchestrator
+---
 
-Main orchestrator for the complete ingestion pipeline.
+## EnhancedDocumentIngestionAgent
 
-### Class Definition
-
-```python
-from agents.ingestion.ingestion_orchestrator import IngestionOrchestrator
-
-class IngestionOrchestrator:
-    """
-    Orchestrates the complete document ingestion pipeline.
-    
-    Coordinates multiple specialized agents to extract, structure,
-    validate, and load contract data into the knowledge graph.
-    """
-```
-
-### Constructor
-
-```python
-def __init__(
-    self,
-    settings: Settings | None = None,
-    enable_schema_evolution: bool = True,
-    enable_reasoning: bool = True,
-    enable_vector_indexing: bool = True,
-    enable_logging: bool = True
-)
-```
-
-**Parameters:**
-
-- `settings` (Settings, optional): Application settings
-- `enable_schema_evolution` (bool): Enable automatic ontology extension
-- `enable_reasoning` (bool): Enable inference after loading
-- `enable_vector_indexing` (bool): Create vector embeddings
-- `enable_logging` (bool): Enable detailed logging
-
-### Methods
-
-#### ingest_document
-
-```python
-def ingest_document(
-    self,
-    file_path: str | Path,
-    graph_uri: str,
-    document_id: str | None = None
-) -> IngestionResult
-```
-
-Ingest a single document into the knowledge graph.
-
-**Parameters:**
-
-- `file_path` (str | Path): Path to document (PDF, DOCX)
-- `graph_uri` (str): Target graph URI
-- `document_id` (str, optional): Custom document ID
-
-**Returns:**
-
-- `IngestionResult`: Complete ingestion results
-
-**Example:**
-
-```python
-orchestrator = IngestionOrchestrator(
-    enable_schema_evolution=True,
-    enable_reasoning=True
-)
-
-result = orchestrator.ingest_document(
-    file_path="contract.pdf",
-    graph_uri="http://example.org/contracts"
-)
-
-print(f"Success: {result.success}")
-print(f"Clauses extracted: {result.clauses_extracted}")
-print(f"Triples loaded: {result.triples_loaded}")
-```
-
-#### batch_ingest
-
-```python
-def batch_ingest(
-    self,
-    file_paths: list[str | Path],
-    graph_uri: str,
-    batch_size: int = 10
-) -> list[IngestionResult]
-```
-
-Ingest multiple documents in batches.
-
-**Parameters:**
-
-- `file_paths` (list): List of document paths
-- `graph_uri` (str): Target graph URI
-- `batch_size` (int): Documents per batch
-
-**Returns:**
-
-- `list[IngestionResult]`: Results for each document
-
-**Example:**
-
-```python
-results = orchestrator.batch_ingest(
-    file_paths=["doc1.pdf", "doc2.pdf", "doc3.pdf"],
-    graph_uri="http://example.org/contracts",
-    batch_size=10
-)
-
-for result in results:
-    print(f"Document {result.document_id}: {result.success}")
-```
-
-### Result Models
-
-#### IngestionResult
-
-```python
-class IngestionResult(BaseModel):
-    """Complete ingestion pipeline result."""
-    
-    document_id: str
-    success: bool
-    steps: list[IngestionStep]
-    
-    # Metrics
-    clauses_extracted: int
-    entities_extracted: int
-    obligations_extracted: int
-    risks_extracted: int
-    triples_generated: int
-    triples_loaded: int
-    facts_inferred: int
-    vectors_indexed: int
-    
-    # Schema evolution
-    ontology_suggestions: list[dict]
-    ontology_extensions_generated: list[str]
-    rules_generated: list[str]
-    shacl_shapes_generated: list[str]
-    
-    # Timing
-    total_duration_ms: float
-    started_at: datetime
-    completed_at: datetime
-```
-
-## DocumentIngestionAgent
-
-Extracts text and metadata from documents.
+Extract text and metadata from various document formats.
 
 ### Class Definition
 
 ```python
-from agents.ingestion.document_ingestion import DocumentIngestionAgent
+from agents.ingestion.enhanced_document_ingestion import EnhancedDocumentIngestionAgent
+from config import get_settings
 
-class DocumentIngestionAgent(BaseAgent):
-    """Extract text and metadata from PDF/DOCX documents."""
+agent = EnhancedDocumentIngestionAgent(settings=get_settings())
 ```
+
+### Supported Formats
+
+| Format | Extensions | Features |
+|--------|-----------|----------|
+| PDF | `.pdf` | Text extraction, page count, metadata |
+| Word | `.docx` | Text, tables, metadata |
+| Excel | `.xlsx`, `.xls` | All sheets, cell values |
+| Email | `.eml` | Subject, body, attachments |
 
 ### Methods
 
-#### process
+#### `process(file_path: str | Path) -> ExtractedDocument`
 
-```python
-def process(
-    self,
-    file_path: str | Path
-) -> DocumentIngestionResult
-```
-
-Extract text and metadata from document.
+Extract content from a document file.
 
 **Parameters:**
 
-- `file_path` (str | Path): Path to document
+- `file_path` (str | Path): Path to the document file
 
 **Returns:**
 
-- `DocumentIngestionResult`: Extracted text and metadata
+- `ExtractedDocument`: Object containing extracted text and metadata
 
 **Example:**
 
 ```python
-agent = DocumentIngestionAgent()
-result = agent.process("contract.pdf")
+from pathlib import Path
+from agents.ingestion.enhanced_document_ingestion import EnhancedDocumentIngestionAgent
+from config import get_settings
 
-print(f"Text length: {len(result.text)}")
-print(f"Metadata: {result.metadata}")
+# Initialize agent
+agent = EnhancedDocumentIngestionAgent(settings=get_settings())
+
+# Extract from PDF
+result = await agent.process("contracts/agreement.pdf")
+
+print(f"Document ID: {result.document_id}")
+print(f"Filename: {result.filename}")
+print(f"Pages: {result.page_count}")
+print(f"Text length: {len(result.text)} characters")
+print(f"Confidence: {result.confidence}")
+print(f"Method: {result.extraction_method}")
 ```
 
-#### Result Model
+**Output:**
+
+```
+Document ID: 8f3a9b2c1d4e5f6a
+Filename: agreement.pdf
+Pages: 15
+Text length: 12450 characters
+Confidence: 0.95
+Method: pdfplumber
+```
+
+### ExtractedDocument Model
 
 ```python
-class DocumentIngestionResult(BaseModel):
-    text: str
-    metadata: dict[str, Any]
-    page_count: int
-    file_type: str
-    extraction_time_ms: float
+class ExtractedDocument(BaseModel):
+    document_id: str          # Unique identifier (SHA-256 hash)
+    filename: str             # Original filename
+    text: str                 # Extracted text content
+    page_count: int          # Number of pages (default: 1)
+    metadata: dict           # Document metadata
+    extraction_method: str   # Method used (pdfplumber, docx, etc.)
+    confidence: float        # Extraction quality (0.0-1.0)
 ```
+
+### Complete Example
+
+```python
+import asyncio
+from pathlib import Path
+from agents.ingestion.enhanced_document_ingestion import EnhancedDocumentIngestionAgent
+from config import get_settings
+
+async def extract_documents():
+    agent = EnhancedDocumentIngestionAgent(settings=get_settings())
+    
+    # Process multiple documents
+    files = [
+        "contracts/master_agreement.pdf",
+        "contracts/amendment_001.docx",
+        "contracts/pricing_sheet.xlsx",
+        "contracts/approval_email.eml"
+    ]
+    
+    results = []
+    for file_path in files:
+        try:
+            result = await agent.process(file_path)
+            results.append({
+                "file": result.filename,
+                "success": True,
+                "text_length": len(result.text),
+                "confidence": result.confidence
+            })
+        except Exception as e:
+            results.append({
+                "file": Path(file_path).name,
+                "success": False,
+                "error": str(e)
+            })
+    
+    return results
+
+# Run extraction
+results = asyncio.run(extract_documents())
+for r in results:
+    print(r)
+```
+
+---
+
+## DirectoryScannerAgent
+
+Recursively discover and classify contract documents in a directory.
+
+### Class Definition
+
+```python
+from agents.ingestion.directory_scanner import DirectoryScannerAgent
+from config import get_settings
+
+agent = DirectoryScannerAgent(settings=get_settings())
+```
+
+### Methods
+
+#### `process(directory: str | Path) -> ScanResult`
+
+Scan directory for contract documents.
+
+**Parameters:**
+
+- `directory` (str | Path): Root directory to scan
+
+**Returns:**
+
+- `ScanResult`: Object containing discovered files and statistics
+
+**Example:**
+
+```python
+from agents.ingestion.directory_scanner import DirectoryScannerAgent
+from config import get_settings
+
+# Initialize agent
+agent = DirectoryScannerAgent(settings=get_settings())
+
+# Scan directory
+result = await agent.process("examples/contracts")
+
+print(f"Total files: {result.total_files}")
+print(f"Supported: {result.supported_files}")
+print(f"Unsupported: {result.unsupported_files}")
+print(f"\nBy type: {result.files_by_type}")
+print(f"By supplier: {result.files_by_supplier}")
+```
+
+**Output:**
+
+```
+Total files: 127
+Supported: 115
+Unsupported: 12
+
+By type: {'contract': 45, 'amendment': 23, 'attachment': 47}
+By supplier: {'Adobe': 15, 'Salesforce': 28, 'George P Johnson': 72}
+```
+
+### File Classification
+
+The agent automatically classifies files based on:
+
+- **Filename patterns**: "amendment", "attachment", "terms", etc.
+- **Directory structure**: parent_contracts/, child_contracts/
+- **File extensions**: .pdf, .docx, .xlsx, .eml
+- **LLM classification** (optional): Uses LLM for ambiguous cases
+
+### DiscoveredFile Model
+
+```python
+@dataclass
+class DiscoveredFile:
+    path: Path                    # Full file path
+    filename: str                 # Filename only
+    extension: str                # File extension
+    size_bytes: int              # File size
+    document_type: DocumentType  # contract, amendment, etc.
+    category: FileCategory       # primary, secondary, reference
+    supplier: Optional[str]      # Detected supplier name
+    batch_id: Optional[str]      # Batch identifier
+    parent_path: Optional[Path]  # Parent contract path
+```
+
+### Complete Example
+
+```python
+import asyncio
+from agents.ingestion.directory_scanner import DirectoryScannerAgent
+from config import get_settings
+
+async def scan_and_filter():
+    agent = DirectoryScannerAgent(settings=get_settings())
+    
+    # Scan directory
+    result = await agent.process("examples/contracts")
+    
+    # Filter by type
+    contracts = [f for f in result.discovered_files 
+                 if f.document_type.value == "contract"]
+    
+    amendments = [f for f in result.discovered_files 
+                  if f.document_type.value == "amendment"]
+    
+    # Filter by supplier
+    adobe_files = [f for f in result.discovered_files 
+                   if f.supplier == "Adobe"]
+    
+    print(f"Contracts: {len(contracts)}")
+    print(f"Amendments: {len(amendments)}")
+    print(f"Adobe files: {len(adobe_files)}")
+    
+    # Show first 5 contracts
+    print("\nFirst 5 contracts:")
+    for file in contracts[:5]:
+        print(f"  - {file.filename} ({file.size_bytes} bytes)")
+
+# Run scan
+asyncio.run(scan_and_filter())
+```
+
+---
+
+## BatchProcessorAgent
+
+Process multiple documents in parallel with progress tracking.
+
+### Class Definition
+
+```python
+from agents.ingestion.batch_processor import BatchProcessorAgent
+from config import get_settings
+
+agent = BatchProcessorAgent(
+    settings=get_settings(),
+    max_concurrent=3,    # Process 3 files at once
+    max_retries=2        # Retry failed files twice
+)
+```
+
+### Methods
+
+#### `process(input_data: dict) -> BatchResult`
+
+Process multiple files in parallel.
+
+**Parameters:**
+
+- `input_data` (dict): Dictionary with:
+    - `files`: List of DiscoveredFile objects
+    - `processor_fn`: Async function to process each file
+    - `progress_callback`: Optional callback for progress updates
+
+**Returns:**
+
+- `BatchResult`: Object containing processing results and statistics
+
+**Example:**
+
+```python
+from agents.ingestion.batch_processor import BatchProcessorAgent
+from agents.ingestion.directory_scanner import DirectoryScannerAgent
+from agents.ingestion.enhanced_document_ingestion import EnhancedDocumentIngestionAgent
+from config import get_settings
+
+async def process_file(discovered_file):
+    """Process a single file"""
+    doc_agent = EnhancedDocumentIngestionAgent(settings=get_settings())
+    result = await doc_agent.process(discovered_file.path)
+    return {
+        "file": discovered_file.filename,
+        "success": True,
+        "text_length": len(result.text)
+    }
+
+async def progress_callback(progress):
+    """Track progress"""
+    print(f"Progress: {progress.completed}/{progress.total_tasks} "
+          f"({progress.progress_percent:.1f}%)")
+
+async def batch_process():
+    settings = get_settings()
+    
+    # Scan directory
+    scanner = DirectoryScannerAgent(settings=settings)
+    scan_result = await scanner.process("examples/contracts")
+    
+    # Process in batches
+    batch_processor = BatchProcessorAgent(
+        settings=settings,
+        max_concurrent=3,
+        max_retries=1
+    )
+    
+    result = await batch_processor.process({
+        "files": scan_result.discovered_files[:10],  # First 10 files
+        "processor_fn": process_file,
+        "progress_callback": progress_callback
+    })
+    
+    print(f"\nBatch complete!")
+    print(f"Total: {result.total_files}")
+    print(f"Successful: {result.successful}")
+    print(f"Failed: {result.failed}")
+    print(f"Duration: {result.total_duration_ms:.0f}ms")
+
+# Run batch processing
+asyncio.run(batch_process())
+```
+
+**Output:**
+
+```
+Progress: 3/10 (30.0%)
+Progress: 6/10 (60.0%)
+Progress: 9/10 (90.0%)
+Progress: 10/10 (100.0%)
+
+Batch complete!
+Total: 10
+Successful: 9
+Failed: 1
+Duration: 15234ms
+```
+
+### BatchResult Model
+
+```python
+class BatchResult(BaseModel):
+    total_files: int              # Total files processed
+    successful: int               # Successfully processed
+    failed: int                   # Failed to process
+    skipped: int                  # Skipped files
+    total_duration_ms: float      # Total processing time
+    tasks: List[ProcessingTask]   # Individual task results
+    errors: List[dict]            # Error details
+```
+
+---
 
 ## ClauseExtractionAgent
 
-Identifies and extracts contract clauses.
+Extract and classify contract clauses using LLM.
 
 ### Class Definition
 
 ```python
 from agents.ingestion.clause_extraction import ClauseExtractionAgent
+from config import get_settings
 
-class ClauseExtractionAgent(BaseAgent):
-    """Extract and classify contract clauses."""
+agent = ClauseExtractionAgent(settings=get_settings())
 ```
 
 ### Methods
 
-#### extract_clauses
-
-```python
-def extract_clauses(
-    self,
-    text: str,
-    document_id: str | None = None
-) -> list[ExtractedClause]
-```
+#### `process(input_data: dict) -> ClauseExtractionResult`
 
 Extract clauses from contract text.
 
 **Parameters:**
 
-- `text` (str): Contract text
-- `document_id` (str, optional): Document identifier
+- `input_data` (dict): Dictionary with:
+    - `document_id`: Document identifier
+    - `text`: Contract text to analyze
 
 **Returns:**
 
-- `list[ExtractedClause]`: Extracted clauses
+- `ClauseExtractionResult`: Object containing extracted clauses
 
 **Example:**
 
 ```python
-agent = ClauseExtractionAgent()
-clauses = agent.extract_clauses(contract_text)
+from agents.ingestion.clause_extraction import ClauseExtractionAgent
+from config import get_settings
 
-for clause in clauses:
-    print(f"{clause.type}: {clause.text[:100]}...")
+async def extract_clauses():
+    agent = ClauseExtractionAgent(settings=get_settings())
+    
+    contract_text = """
+    PAYMENT TERMS
+    
+    Payment shall be made within 30 days of invoice date.
+    Late payments will incur a 2% monthly interest charge.
+    
+    LIABILITY
+    
+    The total liability under this agreement shall not exceed
+    the total contract value paid in the preceding 12 months.
+    """
+    
+    result = await agent.process({
+        "document_id": "contract_001",
+        "text": contract_text
+    })
+    
+    print(f"Extracted {len(result.clauses)} clauses:")
+    for clause in result.clauses:
+        print(f"\n{clause.clause_type.upper()}")
+        print(f"  Text: {clause.text[:100]}...")
+        print(f"  Confidence: {clause.confidence}")
+        print(f"  Risk: {clause.risk_level}")
+
+# Run extraction
+asyncio.run(extract_clauses())
 ```
 
-#### Result Model
+**Output:**
+
+```
+Extracted 3 clauses:
+
+PAYMENT
+  Text: Payment shall be made within 30 days of invoice date...
+  Confidence: 0.92
+  Risk: low
+
+PAYMENT
+  Text: Late payments will incur a 2% monthly interest charge...
+  Confidence: 0.88
+  Risk: medium
+
+LIABILITY
+  Text: The total liability under this agreement shall not exceed...
+  Confidence: 0.95
+  Risk: high
+```
+
+### Clause Types
+
+Supported clause types:
+
+- `payment` - Payment terms and conditions
+- `liability` - Liability and indemnification
+- `termination` - Contract termination clauses
+- `confidentiality` - Confidentiality and NDA terms
+- `warranty` - Warranties and guarantees
+- `intellectual_property` - IP rights and ownership
+- `dispute_resolution` - Dispute resolution mechanisms
+- `force_majeure` - Force majeure provisions
+- `governing_law` - Governing law and jurisdiction
+
+---
+
+## Complete Pipeline Example
+
+Putting it all together:
 
 ```python
-class ExtractedClause(BaseModel):
-    clause_id: str
-    type: str  # TerminationClause, PaymentClause, etc.
-    text: str
-    confidence: float
-    start_position: int
-    end_position: int
-    metadata: dict[str, Any]
+import asyncio
+from pathlib import Path
+from agents.ingestion.directory_scanner import DirectoryScannerAgent
+from agents.ingestion.batch_processor import BatchProcessorAgent
+from agents.ingestion.enhanced_document_ingestion import EnhancedDocumentIngestionAgent
+from agents.ingestion.clause_extraction import ClauseExtractionAgent
+from config import get_settings
+
+async def full_pipeline(directory: str):
+    """Complete ingestion pipeline"""
+    settings = get_settings()
+    
+    # Step 1: Scan directory
+    print("Step 1: Scanning directory...")
+    scanner = DirectoryScannerAgent(settings=settings)
+    scan_result = await scanner.process(directory)
+    print(f"  Found {scan_result.total_files} files")
+    
+    # Step 2: Extract documents
+    print("\nStep 2: Extracting documents...")
+    doc_agent = EnhancedDocumentIngestionAgent(settings=settings)
+    
+    async def extract_doc(file):
+        return await doc_agent.process(file.path)
+    
+    batch_processor = BatchProcessorAgent(settings=settings, max_concurrent=3)
+    extract_result = await batch_processor.process({
+        "files": scan_result.discovered_files[:5],  # First 5 files
+        "processor_fn": extract_doc
+    })
+    print(f"  Extracted {extract_result.successful} documents")
+    
+    # Step 3: Extract clauses
+    print("\nStep 3: Extracting clauses...")
+    clause_agent = ClauseExtractionAgent(settings=settings)
+    
+    total_clauses = 0
+    for task in extract_result.tasks:
+        if task.status == "completed" and task.result:
+            doc = task.result
+            clause_result = await clause_agent.process({
+                "document_id": doc.document_id,
+                "text": doc.text
+            })
+            total_clauses += len(clause_result.clauses)
+    
+    print(f"  Extracted {total_clauses} clauses")
+    
+    print("\n✓ Pipeline complete!")
+
+# Run pipeline
+asyncio.run(full_pipeline("examples/contracts"))
 ```
 
-## EntityExtractionAgent
+---
 
-Extracts named entities from clauses.
+## Error Handling
 
-### Class Definition
+All agents support comprehensive error handling:
 
 ```python
-from agents.ingestion.entity_extraction import EntityExtractionAgent
+from agents.ingestion.enhanced_document_ingestion import EnhancedDocumentIngestionAgent
+from config import get_settings
 
-class EntityExtractionAgent(BaseAgent):
-    """Extract named entities from contract text."""
+async def safe_extraction():
+    agent = EnhancedDocumentIngestionAgent(settings=get_settings())
+    
+    try:
+        result = await agent.process("contract.pdf")
+        print(f"Success: {result.filename}")
+    except FileNotFoundError:
+        print("File not found")
+    except ValueError as e:
+        print(f"Invalid file format: {e}")
+    except Exception as e:
+        print(f"Extraction failed: {e}")
+
+asyncio.run(safe_extraction())
 ```
 
-### Methods
+---
 
-#### extract_entities
+## Performance Tips
+
+### 1. Batch Processing
+
+Process multiple files in parallel:
 
 ```python
-def extract_entities(
-    self,
-    clauses: list[ExtractedClause]
-) -> EntityExtractionResult
+# Good: Parallel processing
+batch_processor = BatchProcessorAgent(max_concurrent=5)
+
+# Avoid: Sequential processing
+for file in files:
+    await agent.process(file)  # Slow!
 ```
 
-Extract entities from clauses.
+### 2. Disable LLM Classification
 
-**Parameters:**
-
-- `clauses` (list): List of extracted clauses
-
-**Returns:**
-
-- `EntityExtractionResult`: Extracted entities
-
-**Example:**
+For faster scanning without LLM:
 
 ```python
-agent = EntityExtractionAgent()
-result = agent.extract_entities(clauses)
-
-for entity in result.entities:
-    print(f"{entity.type}: {entity.value}")
+scanner = DirectoryScannerAgent(settings=settings)
+scanner.llm = None  # Disable LLM classification
+result = await scanner.process(directory)
 ```
 
-#### Result Model
+### 3. Limit File Size
+
+Skip very large files:
 
 ```python
-class Entity(BaseModel):
-    entity_id: str
-    type: str  # Party, Date, Money, Location, etc.
-    value: str
-    confidence: float
-    source_clause_id: str
-    metadata: dict[str, Any]
-
-class EntityExtractionResult(BaseModel):
-    entities: list[Entity]
-    entity_count: int
-    extraction_time_ms: float
+files = [f for f in scan_result.discovered_files 
+         if f.size_bytes < 10_000_000]  # < 10MB
 ```
 
-## ObligationRiskAgent
-
-Identifies obligations and risks in contracts.
-
-### Class Definition
-
-```python
-from agents.ingestion.obligation_risk import ObligationRiskAgent
-
-class ObligationRiskAgent(BaseAgent):
-    """Identify contractual obligations and risks."""
-```
-
-### Methods
-
-#### analyze
-
-```python
-def analyze(
-    self,
-    clauses: list[ExtractedClause]
-) -> ObligationRiskResult
-```
-
-Analyze clauses for obligations and risks.
-
-**Parameters:**
-
-- `clauses` (list): List of extracted clauses
-
-**Returns:**
-
-- `ObligationRiskResult`: Identified obligations and risks
-
-**Example:**
-
-```python
-agent = ObligationRiskAgent()
-result = agent.analyze(clauses)
-
-print(f"Obligations: {len(result.obligations)}")
-print(f"Risks: {len(result.risks)}")
-```
-
-#### Result Models
-
-```python
-class Obligation(BaseModel):
-    obligation_id: str
-    type: str
-    text: str
-    party: str | None
-    deadline: str | None
-    severity: str
-    source_clause_id: str
-
-class Risk(BaseModel):
-    risk_id: str
-    type: str
-    description: str
-    severity: str  # low, medium, high, critical
-    likelihood: str
-    impact: str
-    source_clause_id: str
-
-class ObligationRiskResult(BaseModel):
-    obligations: list[Obligation]
-    risks: list[Risk]
-    analysis_time_ms: float
-```
-
-## RDFGeneratorAgent
-
-Converts structured data to RDF triples.
-
-### Class Definition
-
-```python
-from agents.ingestion.rdf_generator import RDFGeneratorAgent
-
-class RDFGeneratorAgent(BaseAgent):
-    """Generate RDF triples from structured contract data."""
-```
-
-### Methods
-
-#### generate_rdf
-
-```python
-def generate_rdf(
-    self,
-    document_id: str,
-    clauses: list[ExtractedClause],
-    entities: list[Entity],
-    obligations: list[Obligation],
-    risks: list[Risk],
-    alignment: AlignmentResult
-) -> RDFGenerationResult
-```
-
-Generate RDF graph from contract data.
-
-**Parameters:**
-
-- `document_id` (str): Document identifier
-- `clauses` (list): Extracted clauses
-- `entities` (list): Extracted entities
-- `obligations` (list): Identified obligations
-- `risks` (list): Identified risks
-- `alignment` (AlignmentResult): Ontology alignment
-
-**Returns:**
-
-- `RDFGenerationResult`: Generated RDF graph
-
-**Example:**
-
-```python
-agent = RDFGeneratorAgent()
-result = agent.generate_rdf(
-    document_id="ABC123",
-    clauses=clauses,
-    entities=entities,
-    obligations=obligations,
-    risks=risks,
-    alignment=alignment
-)
-
-print(result.rdf_graph.serialize(format="turtle"))
-```
-
-#### Result Model
-
-```python
-class RDFGenerationResult(BaseModel):
-    rdf_graph: Graph  # rdflib.Graph
-    triple_count: int
-    generation_time_ms: float
-    namespaces: dict[str, str]
-```
-
-## ValidationAgent
-
-Validates RDF data against SHACL shapes.
-
-### Class Definition
-
-```python
-from agents.ingestion.validation_agent import ValidationAgent
-
-class ValidationAgent(BaseAgent):
-    """Validate RDF data using SHACL shapes."""
-```
-
-### Methods
-
-#### validate
-
-```python
-def validate(
-    self,
-    rdf_graph: Graph,
-    shacl_shapes: Graph | None = None
-) -> ValidationResult
-```
-
-Validate RDF graph against SHACL shapes.
-
-**Parameters:**
-
-- `rdf_graph` (Graph): RDF graph to validate
-- `shacl_shapes` (Graph, optional): SHACL shapes (uses default if None)
-
-**Returns:**
-
-- `ValidationResult`: Validation results
-
-**Example:**
-
-```python
-agent = ValidationAgent()
-result = agent.validate(rdf_graph)
-
-if not result.conforms:
-    for violation in result.violations:
-        print(f"Error: {violation.message}")
-```
-
-#### Result Model
-
-```python
-class Violation(BaseModel):
-    focus_node: str
-    result_path: str
-    value: str
-    message: str
-    severity: str
-
-class ValidationResult(BaseModel):
-    conforms: bool
-    violations: list[Violation]
-    validation_time_ms: float
-```
-
-## FusekiLoaderAgent
-
-Loads RDF data into Apache Fuseki.
-
-### Class Definition
-
-```python
-from agents.ingestion.fuseki_loader import FusekiLoaderAgent
-
-class FusekiLoaderAgent(BaseAgent):
-    """Load RDF data into Fuseki triple store."""
-```
-
-### Methods
-
-#### load
-
-```python
-def load(
-    self,
-    rdf_graph: Graph,
-    graph_uri: str,
-    batch_size: int = 1000
-) -> LoadResult
-```
-
-Load RDF graph into Fuseki.
-
-**Parameters:**
-
-- `rdf_graph` (Graph): RDF graph to load
-- `graph_uri` (str): Target graph URI
-- `batch_size` (int): Triples per batch
-
-**Returns:**
-
-- `LoadResult`: Load statistics
-
-**Example:**
-
-```python
-agent = FusekiLoaderAgent()
-result = agent.load(
-    rdf_graph=rdf,
-    graph_uri="http://example.org/contracts"
-)
-
-print(f"Loaded {result.triples_loaded} triples")
-```
-
-#### Result Model
-
-```python
-class LoadResult(BaseModel):
-    triples_loaded: int
-    load_time_ms: float
-    graph_uri: str
-    success: bool
-    error: str | None
-```
+---
 
 ## See Also
 
-- [Retrieval Agents API](../api/agents/retrieval.md)
-- [Schema Evolution Agents API](../api/agents/schema-evolution.md)
-- [Ingestion Guide](../../guide/ingestion.md)
+- [Enhanced Ingestion Guide](../../guide/enhanced-ingestion.md)
+- [Retrieval Agents API](retrieval.md)
+- [Storage API](../storage/sparql.md)

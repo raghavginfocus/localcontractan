@@ -124,6 +124,9 @@ make logs-view
 
 # Analyze ingestion performance
 make logs-analyze-ingestion
+
+# Verify data was loaded successfully
+make verify-data
 ```
 
 ## Query the Knowledge Graph
@@ -234,6 +237,7 @@ make api-test-all        # Test API with all query levels
 # Data Operations
 make ingest              # Run ingestion pipeline
 make ingest-override     # Force reprocess all documents
+make verify-data         # Verify data loaded in Fuseki and Milvus
 make data-setup-text-index  # Setup text indexing
 
 # Testing & Evaluation

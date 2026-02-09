@@ -186,7 +186,8 @@ services:
     volumes:
       - ../agents/logs:/app/logs
       - ../agents/checkpoints:/app/checkpoints
-      - ../examples:/app/data:ro
+      - ../agents/data:/app/data
+      - ../examples:/app/examples:ro
     networks:
       - contract-kg-network
     depends_on:

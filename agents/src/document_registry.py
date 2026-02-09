@@ -142,11 +142,16 @@ class DocumentRegistry:
     def _init_sqlite(self, db_path: Path | None):
         """Initialize SQLite backend."""
         import sqlite3
+        import os
         
         if db_path is None:
-            # Default to /app/checkpoints/document_registry.db inside the container
-            # This path is writable and typically mounted as a volume
-            db_path = Path("/app/checkpoints/document_registry.db")
+            # Detect if running in container or locally
+            if os.path.exists("/app/checkpoints"):
+                # Running in container
+                db_path = Path("/app/checkpoints/document_registry.db")
+            else:
+                # Running locally - use relative path
+                db_path = Path("agents/checkpoints/document_registry.db")
         
         db_path.parent.mkdir(parents=True, exist_ok=True)
         self.db_path = db_path

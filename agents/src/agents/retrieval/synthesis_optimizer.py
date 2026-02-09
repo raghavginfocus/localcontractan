@@ -99,14 +99,43 @@ Generate a detailed, data-driven answer:"""),
         
         self.logger.info(f"Starting synthesis with strategy: {strategy}")
         
-        # Step 1: Filter and rank data (smart pre-processing)
+        # Log input data for debugging
+        total_facts = self._count_total_facts(all_data)
+        self.logger.info(f"Input data: {total_facts} total facts")
+        if total_facts > 0:
+            # Log sample of input facts
+            sample_facts = []
+            for step_data in all_data.get('steps', []):
+                facts = step_data.get('kg_facts', [])
+                if facts:
+                    sample_facts.extend(facts[:2])
+            if sample_facts:
+                self.logger.info(f"Sample input fact keys: {list(sample_facts[0].keys())}")
+                self.logger.info(f"Sample input fact: {str(sample_facts[0])[:200]}")
+        
+        # Step 1: NO FILTERING - Pass ALL facts to synthesis
+        # (Filtering was causing data loss)
         filter_start = time.time()
-        filtered_data = self._filter_and_rank_data(question, all_data)
+        
+        # Collect ALL facts without filtering
+        all_facts = []
+        all_contexts = []
+        for step_data in all_data.get('steps', []):
+            all_facts.extend(step_data.get('kg_facts', []))
+            all_contexts.extend(step_data.get('vector_results', []))
+        
+        filtered_data = {
+            'facts': all_facts,
+            'contexts': all_contexts
+        }
+        
         filter_time = (time.time() - filter_start) * 1000
         
-        self.logger.info(f"Data filtering completed in {filter_time:.2f}ms")
-        self.logger.info(f"  Facts before: {self._count_total_facts(all_data)}")
-        self.logger.info(f"  Facts after: {len(filtered_data['facts'])}")
+        self.logger.info(f"Data collection (no filtering) completed in {filter_time:.2f}ms")
+        self.logger.info(f"  Total facts: {len(all_facts)}")
+        self.logger.info(f"  Total contexts: {len(all_contexts)}")
+        if all_facts:
+            self.logger.info(f"  Sample fact: {str(all_facts[0])[:200]}")
         
         # Step 2: Format for synthesis (concise)
         formatted_facts = self._format_filtered_data(filtered_data)

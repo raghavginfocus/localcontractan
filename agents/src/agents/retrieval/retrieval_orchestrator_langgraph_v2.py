@@ -7,7 +7,8 @@ This orchestrator uses LangGraph for:
 3. Workflow visualization
 
 But delegates actual retrieval to existing, proven agents:
-- ReActRetrievalAgent (for complex queries)
+- IterativeOrchestrator (new: with answer critique & refinement)
+- ReActRetrievalAgent (legacy: for complex queries)
 - RAGOrchestratorAgent (for simple queries)
 - Existing logging via RAGLogger
 """
@@ -19,6 +20,7 @@ from enum import Enum
 from langgraph.graph import StateGraph, END
 
 from agents.retrieval.react_agent_optimized import ReActRetrievalAgent
+from agents.retrieval.iterative_orchestrator import IterativeOrchestrator
 from storage.sparql.base import SPARQLStore
 from storage.vector.base import VectorStore
 from service_factory import get_service_factory
@@ -100,14 +102,30 @@ class LangGraphRetrievalOrchestrator:
         log_dir = str(get_log_dir("retrieval"))
         self.rag_logger = get_rag_logger(log_dir) if enable_logging else None
         
-        # Initialize ReAct agent only (simplified architecture)
-        # Removed: UnifiedQueryAnalyzer (saves 60-80s per query)
-        # Removed: RAGOrchestratorAgent (ReAct handles all queries)
+        # Check if iterative refinement is enabled
+        self.use_iterative = self.settings.enable_iterative_refinement
+        
+        # Always initialize ReAct agent (needed for retrieval/synthesis)
         self.react_agent = ReActRetrievalAgent(
             sparql_store=self.sparql_store,
             vector_store=self.vector_store,
             settings=self.settings,
         )
+        
+        if self.use_iterative:
+            # NEW: Initialize Iterative Orchestrator with answer critique
+            logger.info(
+                "Initializing with Iterative Orchestrator "
+                "(smart decomposition + answer critique + refinement)"
+            )
+            self.iterative_orchestrator = IterativeOrchestrator(
+                settings=self.settings,
+                max_iterations=self.settings.max_refinement_iterations,
+            )
+        else:
+            # LEGACY: Use ReAct agent directly
+            logger.info("Initializing with legacy ReAct agent")
+            self.iterative_orchestrator = None
         
         # Build LangGraph workflow
         self.workflow = self._build_workflow()
@@ -136,15 +154,132 @@ class LangGraphRetrievalOrchestrator:
         
         return workflow
     
-    async def _execute_retrieval(self, state: RetrievalState) -> RetrievalState:
-        """Execute retrieval using ReAct agent (handles all query types)."""
-        logger.info("Executing retrieval with ReAct agent", question=state["question"][:100])
+    async def _retrieval_callback(self, query: str):
+        """
+        Retrieval callback for IterativeOrchestrator.
+        Uses ReAct agent's retrieval capabilities with error handling.
+        Returns RetrievalResult object.
+        """
+        from agents.retrieval.iterative_orchestrator import RetrievalResult
         
         try:
-            # Use ReAct agent for all queries (no pre-analysis)
-            result = await self.react_agent.process({
-                "question": state["question"],
-            })
+            # Execute hybrid retrieval (SPARQL + vector)
+            observation, data = await self.react_agent._execute_hybrid(query)
+            
+            # Combine facts from both sources
+            kg_facts = data.get("kg_facts", [])
+            vector_results = data.get("vector_results", [])
+            all_facts = kg_facts + vector_results
+            
+            # Return RetrievalResult object
+            return RetrievalResult(
+                facts=all_facts,
+                sources=[],
+                query_used=query,
+                duration_ms=(
+                    data.get("kg_retrieval_time_ms", 0) +
+                    data.get("vector_retrieval_time_ms", 0)
+                )
+            )
+        except Exception as e:
+            # Log error but return empty result instead of crashing
+            logger.error(
+                f"Retrieval failed for query: {query[:100]}",
+                error=str(e)
+            )
+            # Return empty result so flow can continue
+            return RetrievalResult(
+                facts=[],
+                sources=[],
+                query_used=query,
+                duration_ms=0.0
+            )
+    
+    async def _synthesis_callback(
+        self,
+        question: str,
+        facts: list
+    ) -> str:
+        """
+        Synthesis callback for IterativeOrchestrator.
+        Uses ReAct agent's synthesis capabilities.
+        """
+        # Format facts in the structure expected by _synthesize_answer
+        # It expects: {"step_key": {"kg_facts": [...], "vector_results": [...]}}
+        aggregated_data = {
+            "accumulated_facts": {
+                "kg_facts": facts,
+                "vector_results": []
+            }
+        }
+        
+        # Create minimal steps for synthesis
+        from agents.retrieval.react_agent_optimized import ReActStep, ActionType
+        steps = [ReActStep(
+            iteration=1,
+            thought="Synthesizing answer from collected facts",
+            action_type=ActionType.SYNTHESIZE,
+            observation=f"Collected {len(facts)} facts"
+        )]
+        
+        answer = await self.react_agent._synthesize_answer(
+            question,
+            aggregated_data,
+            steps
+        )
+        return answer
+    
+    async def _execute_retrieval(self, state: RetrievalState) -> RetrievalState:
+        """Execute retrieval using appropriate agent based on config."""
+        question = state.get("question", "")
+        
+        if self.use_iterative:
+            logger.info(
+                "Executing with Iterative Orchestrator "
+                "(smart decomposition + critique + refinement)",
+                question=question[:100]
+            )
+        else:
+            logger.info(
+                "Executing with legacy ReAct agent",
+                question=question[:100]
+            )
+        
+        try:
+            # Route to appropriate agent based on configuration
+            if self.use_iterative:
+                # NEW: Use iterative orchestrator with refinement
+                session = await self.iterative_orchestrator.answer_with_refinement(
+                    question=question,
+                    retrieval_fn=self._retrieval_callback,
+                    synthesis_fn=self._synthesis_callback
+                )
+                
+                # Convert RefinementSession to ReActResult format
+                # Extract confidence from final critique if available
+                confidence = 0.8  # Default
+                if session.final_critique:
+                    confidence = session.final_critique.confidence_score
+                
+                # Collect all facts from iterations
+                all_facts = []
+                for iter_state in session.iterations:
+                    for retrieval_result in iter_state.retrieval_results:
+                        all_facts.extend(retrieval_result.facts)
+                
+                result = type('obj', (object,), {
+                    'final_answer': session.final_answer,
+                    'confidence': confidence,
+                    'steps': [],  # Could map iterations to steps if needed
+                    'aggregated_data': {
+                        'all_facts': all_facts
+                    }
+                })()
+            else:
+                # LEGACY: Use ReAct agent
+                result = await self.react_agent.process({
+                    "question": question,
+                })
             
             # Extract metadata from ReAct result
             kg_facts_count = 0

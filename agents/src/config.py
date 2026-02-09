@@ -249,6 +249,16 @@ class Settings(BaseSettings):
         default=True,
         description="Always use ReAct agent for all queries (simplified architecture)",
     )
+    
+    # Improved Agentic Architecture
+    enable_iterative_refinement: bool = Field(
+        default=False,
+        description="Enable new iterative refinement with answer critique",
+    )
+    max_refinement_iterations: int = Field(
+        default=3,
+        description="Maximum refinement iterations for answer improvement",
+    )
 
     class Config:
         extra = "ignore"  # Ignore extra fields from environment

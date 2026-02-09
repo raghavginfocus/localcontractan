@@ -45,8 +45,8 @@ COPY --from=builder /app/.venv /app/.venv
 # Copy application code
 COPY --chown=appuser:appuser src/ ./src/
 
-# Create directories for logs, checkpoints, and data
-RUN mkdir -p /app/logs /app/checkpoints /app/data && \
+# Create directories for logs (with subdirectories), checkpoints, and data
+RUN mkdir -p /app/logs/retrieval /app/logs/ingestion /app/checkpoints /app/data && \
     chown -R appuser:appuser /app
 
 # Set environment variables

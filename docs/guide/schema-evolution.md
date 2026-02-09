@@ -10,6 +10,9 @@ The schema evolution system enables the knowledge graph to **grow organically** 
 2. **Generating OWL definitions** for discovered concepts
 3. **Creating SHACL validation rules** for data quality
 4. **Generating reasoning rules** for inference
+5. **Automatically loading artifacts to Fuseki** (NEW!)
+
+> **Note**: As of the latest update, SHACL shapes and reasoning rules are **automatically loaded** into Fuseki during ingestion. No manual script execution required! See [SHACL and Rules Integration Guide](shacl-rules-integration.md) for details.
 
 ## Architecture
 

@@ -476,6 +476,18 @@ Output valid SHACL/Turtle:"""),
         """Post-process SHACL to fix common LLM generation issues."""
         import re
         
+        # Fix line breaks in URIs (critical fix for WatsonX output)
+        # Pattern: <http://www.\nw3.\norg/...> -> <http://www.w3.org/...>
+        def fix_uri_linebreaks(match):
+            uri = match.group(0)
+            # Remove all newlines and extra spaces within URIs
+            uri = uri.replace('\n', '').replace('\r', '')
+            uri = re.sub(r'\s+', '', uri)
+            return uri
+        
+        # Fix URIs in angle brackets
+        shacl_text = re.sub(r'<[^>]*\n[^>]*>', fix_uri_linebreaks, shacl_text, flags=re.MULTILINE)
+        
         # Fix malformed prefix declarations (remove weird characters before xsd:)
         shacl_text = re.sub(r"'[^']*'xsd:", 'xsd:', shacl_text)
         shacl_text = re.sub(r'[^a-zA-Z:]xsd:', ' xsd:', shacl_text)

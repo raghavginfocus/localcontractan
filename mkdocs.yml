@@ -97,10 +97,12 @@ nav:
     - Performance Optimizations: architecture/performance.md
   - User Guide:
     - Document Ingestion: guide/ingestion.md
+    - Enhanced Ingestion: guide/enhanced-ingestion.md
     - Ingestion Pipeline Deep Dive: guide/ingestion-pipeline-deep-dive.md
     - Example Extractions: guide/example-extractions.md
     - Query & Retrieval: guide/retrieval.md
     - Schema Evolution: guide/schema-evolution.md
+    - SHACL & Rules Integration: guide/shacl-rules-integration.md
     - Observability: guide/observability.md
   - API Reference:
     - Agents:

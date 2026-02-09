@@ -23,8 +23,14 @@ from logger import get_module_logger
 logger = get_module_logger(__name__)
 
 # Default base directory for artifacts
-# Use an absolute path under /app to avoid read-only volume mounts (e.g. /app/data:ro)
-DEFAULT_ARTIFACT_DIR = Path("/app/artifacts")
+# Detect if running in container or locally
+import os
+if os.path.exists("/app/data"):
+    # Running in container
+    DEFAULT_ARTIFACT_DIR = Path("/app/data/generated")
+else:
+    # Running locally
+    DEFAULT_ARTIFACT_DIR = Path("agents/data/generated")
 
 
 class ArtifactStore:

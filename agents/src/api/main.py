@@ -231,20 +231,24 @@ async def ingest_document(request: IngestionRequest):
             )
         
         # Process document
-        result = await ingestion_orchestrator.process_document(
+        result = await ingestion_orchestrator.ingest(
             file_path=request.file_path,
             override=request.override,
         )
         
         # Format response
         response = IngestionResponse(
-            success=result.get("success", False),
-            document_id=result.get("document_id", ""),
-            message=result.get("message", ""),
+            success=result.success,
+            document_id=result.document_id,
+            message="Document ingested successfully" if result.success else result.error or "Ingestion failed",
             metadata={
-                "processing_time": result.get("processing_time", 0),
-                "num_clauses": result.get("num_clauses", 0),
-                "num_entities": result.get("num_entities", 0),
+                "processing_time": result.total_duration_ms,
+                "num_clauses": result.clauses_extracted,
+                "num_entities": result.entities_extracted,
+                "num_obligations": result.obligations_extracted,
+                "num_risks": result.risks_extracted,
+                "triples_loaded": result.triples_loaded,
+                "vectors_indexed": result.vectors_indexed,
             },
         )
         

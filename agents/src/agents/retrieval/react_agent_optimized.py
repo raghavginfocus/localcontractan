@@ -578,6 +578,12 @@ Generate a concise, well-structured answer."""),
         
         facts = result.get("results", [])
         
+        # Log the actual facts retrieved for debugging
+        logger.info(f"SPARQL returned {len(facts)} facts")
+        if facts and len(facts) > 0:
+            logger.info(f"Sample fact keys: {list(facts[0].keys())}")
+            logger.info(f"Sample fact: {facts[0]}")
+        
         # Normalize clause types
         if facts and isinstance(facts, list) and len(facts) > 0:
             if isinstance(facts[0], dict) and "clauseType" in facts[0]:
@@ -695,6 +701,18 @@ Generate a concise, well-structured answer."""),
         """Format all collected data for synthesis."""
         lines = []
         
+        # DEBUG: Log what we're receiving
+        logger.info(f"_format_all_data received data with keys: {list(data.keys())}")
+        for key, value in data.items():
+            if isinstance(value, dict):
+                logger.info(f"  {key}: dict with keys {list(value.keys())}")
+                if "kg_facts" in value:
+                    logger.info(f"    kg_facts: {len(value['kg_facts'])} facts")
+                    if value['kg_facts']:
+                        logger.info(f"    Sample fact: {str(value['kg_facts'][0])[:300]}")
+            else:
+                logger.info(f"  {key}: {type(value)}")
+        
         for step_key, step_data in data.items():
             lines.append(f"\n{step_key.upper()}:")
             
@@ -703,7 +721,8 @@ Generate a concise, well-structured answer."""),
                 kg_facts = step_data.get("kg_facts", [])
                 if kg_facts:
                     lines.append(f"  Knowledge Graph Facts ({len(kg_facts)}):")
-                    for i, fact in enumerate(kg_facts[:10], 1):
+                    # Show ALL facts, not just first 10
+                    for i, fact in enumerate(kg_facts, 1):
                         fact_str = ", ".join(
                             f"{k}: {v}" for k, v in fact.items()
                         )
@@ -722,7 +741,10 @@ Generate a concise, well-structured answer."""),
                             f"    {i}. [{clause_type}] {text}..."
                         )
         
-        return "\n".join(lines)
+        formatted = "\n".join(lines)
+        logger.info(f"Formatted data length: {len(formatted)} chars")
+        logger.info(f"Formatted data preview: {formatted[:500]}")
+        return formatted
     
     def _calculate_confidence(
         self,
