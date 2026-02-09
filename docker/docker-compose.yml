@@ -114,18 +114,19 @@ services:
     restart: unless-stopped
 
   # Ollama - Local LLM (works on CPU, faster with GPU)
-  ollama:
-    image: ollama/ollama:latest
-    container_name: contract-kg-ollama
-    ports:
-      - "11434:11434"
-    volumes:
-      - ollama-data:/root/.ollama
-    networks:
-      - contract-kg-network
-    environment:
-      - OLLAMA_HOST=0.0.0.0
-    restart: unless-stopped
+  # Commented out as we are using WatsonX AI
+  # ollama:
+  #   image: ollama/ollama:latest
+  #   container_name: contract-kg-ollama
+  #   ports:
+  #     - "11434:11434"
+  #   volumes:
+  #     - ollama-data:/root/.ollama
+  #   networks:
+  #     - contract-kg-network
+  #   environment:
+  #     - OLLAMA_HOST=0.0.0.0
+  #   restart: unless-stopped
 
   # Phoenix - LLM Observability Platform
   phoenix:
@@ -181,7 +182,6 @@ services:
       - MILVUS_PORT=19530
       - PHOENIX_COLLECTOR_ENDPOINT=http://phoenix:4317
       - PHOENIX_ENABLED=true
-      - OLLAMA_BASE_URL=http://ollama:11434
       - PYTHONUNBUFFERED=1
     volumes:
       - ../agents/logs:/app/logs
@@ -194,7 +194,6 @@ services:
       - fuseki
       - milvus
       - phoenix
-      - ollama
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
