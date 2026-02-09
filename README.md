@@ -389,19 +389,6 @@ Comprehensive documentation available at http://localhost:8000 (after running `m
 - [Architecture Overview](docs/architecture/overview.md) - System architecture and design patterns
 - [Quick Start Guide](docs/getting-started/quickstart.md) - Get up and running in 5 minutes
 
-##  Performance Optimizations
-
-Recent optimizations have reduced query times from **269 seconds to ~5 seconds**:
-
--  Removed JSON file generation overhead
--  Implemented SPARQL query caching with TTL
--  Added lazy loading for embeddings
--  Connection pooling for Milvus/Fuseki
--  Batch LLM processing
--  Simplified architecture (removed query analysis overhead)
--  Template-based SPARQL queries
-
-See [PERFORMANCE_IMPROVEMENTS.md](PERFORMANCE_IMPROVEMENTS.md) for details.
 
 ##  Contributing
 
