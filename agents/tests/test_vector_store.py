@@ -114,4 +114,4 @@ def test_collection_schema():
     assert "fields" in schema
     assert len(schema["fields"]) >= 2  # At least ID and embedding
 
-# Made with Bob
+

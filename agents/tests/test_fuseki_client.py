@@ -110,4 +110,4 @@ def test_sparql_update_construction():
     assert "INSERT" in update
     assert "PREFIX" in update
 
-# Made with Bob
+

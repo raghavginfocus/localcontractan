@@ -103,4 +103,4 @@ def test_file_category_enum():
     assert FileCategory.REFERENCE
     assert FileCategory.UNSUPPORTED
 
-# Made with Bob
+

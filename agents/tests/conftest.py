@@ -27,4 +27,4 @@ def sample_docx_path():
     """Path to sample DOCX for testing."""
     return Path(__file__).parent.parent.parent / "examples" / "P_SRA_SMA_PA_Hong_Kong-English_v6_17.docx"
 
-# Made with Bob
+

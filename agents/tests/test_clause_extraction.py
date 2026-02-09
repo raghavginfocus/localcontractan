@@ -108,4 +108,4 @@ async def test_clause_extraction_handles_long_text(settings):
     assert agent is not None
     assert len(long_text) > 10000
 
-# Made with Bob
+

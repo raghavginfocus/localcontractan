@@ -85,4 +85,4 @@ def test_sparql_prefixes():
     agent = SPARQLGeneratorAgent(settings=None)
     assert hasattr(agent, 'process')
 
-# Made with Bob
+

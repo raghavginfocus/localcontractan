@@ -36,4 +36,4 @@ def test_milvus_configuration(settings):
     assert settings.milvus_port > 0
     assert settings.milvus_collection
 
-# Made with Bob
+

@@ -61,4 +61,4 @@ def test_openapi_schema(client):
     assert "openapi" in schema
     assert "paths" in schema
 
-# Made with Bob
+
