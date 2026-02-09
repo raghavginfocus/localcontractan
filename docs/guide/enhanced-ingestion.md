@@ -6,8 +6,8 @@ The enhanced ingestion pipeline provides production-ready capabilities for proce
 
 The enhanced pipeline consists of three main components:
 
-1. **Directory Scanner Agent** - Discovers and classifies documents
-2. **Batch Processor Agent** - Processes multiple documents in parallel
+1. **Directory Scanner Agent** - Discovers all contract files (PDF/DOCX/DOC)
+2. **Batch Processor Agent** - Processes multiple documents in parallel through full ingestion pipeline
 3. **Enhanced Document Ingestion Agent** - Extracts text with LLM reasoning
 
 ## Features
@@ -28,7 +28,7 @@ print(f"By supplier: {scan_result.files_by_supplier}")
 
 **Capabilities:**
 - Recursive traversal of nested directories
-- Smart file classification using LLM
+- Simple path-based file classification (no LLM)
 - Relationship detection (parent/child contracts)
 - Batch organization by supplier
 - Metadata extraction from file paths
@@ -170,12 +170,13 @@ asyncio.run(main())
 ├─────────────────────────────────────────────────────────┤
 │                                                           │
 │  ┌──────────────────┐                                   │
-│  │ Directory Scanner │  Discovers & classifies files    │
+│  │ Directory Scanner │  Discovers all PDF/DOCX/DOC      │
 │  └────────┬─────────┘                                   │
 │           │                                              │
 │           ▼                                              │
 │  ┌──────────────────┐                                   │
-│  │ Batch Processor  │  Parallel processing with retry   │
+│  │ Batch Processor  │  Runs files through full          │
+│  │                  │  ingestion pipeline agents        │
 │  └────────┬─────────┘                                   │
 │           │                                              │
 │           ▼                                              │

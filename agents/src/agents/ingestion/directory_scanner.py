@@ -1,11 +1,12 @@
 """
 Directory Scanner Agent - Recursively discovers contract documents.
 
-This agent implements an agentic approach to document discovery with:
-- Chain-of-thought reasoning for file classification
-- Smart filtering of relevant documents
+This agent discovers all contract documents in a directory with:
+- Recursive directory traversal
+- Simple path-based file classification
 - Relationship detection (parent/child contracts)
-- Batch organization for efficient processing
+- Batch organization by supplier
+- Support for PDF, DOCX, and DOC files
 """
 
 import asyncio
@@ -73,10 +74,10 @@ class DirectoryScannerAgent(BaseAgent):
     
     Features:
     - Recursive directory traversal
-    - Smart file classification using LLM
+    - Simple path-based file classification (no LLM)
     - Relationship detection (parent/child contracts)
     - Batch organization by supplier
-    - Support for multiple file types
+    - Support for PDF, DOCX, and DOC files
     """
     
     # Supported file extensions - ONLY PDF and DOCX
@@ -163,10 +164,10 @@ class DirectoryScannerAgent(BaseAgent):
         return files
     
     async def _classify_files(self, files: List[Path]) -> List[DiscoveredFile]:
-        """Classify discovered files using LLM reasoning."""
+        """Classify discovered files using simple path-based classification."""
         discovered = []
         
-        # Process files in batches to avoid overwhelming the LLM
+        # Process files in batches for efficient async processing
         batch_size = 10
         for i in range(0, len(files), batch_size):
             batch = files[i:i + batch_size]
