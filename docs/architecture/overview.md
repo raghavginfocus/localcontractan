@@ -1,6 +1,6 @@
 # Architecture Overview
 
-Contract-Jena is built on a multi-layered architecture combining semantic knowledge graphs, vector databases, and LLM-powered agents.
+Contract-Jena is built on a multi-layered architecture combining semantic knowledge graphs, vector databases, and LLM-powered agents with iterative refinement.
 
 ## System Architecture
 
@@ -15,21 +15,28 @@ graph TB
     subgraph "Orchestration Layer"
         LG[LangGraph Orchestrator]
         ReAct[ReAct Agent]
+        Iter[Iterative Orchestrator]
     end
     
     subgraph "Agent Layer"
-        subgraph "Ingestion Agents"
+        subgraph "Ingestion Agents (10+)"
             DocParse[Document Parser]
+            BatchProc[Batch Processor]
+            DirScan[Directory Scanner]
             EntityExt[Entity Extraction]
             ClauseExt[Clause Extraction]
             OntAlign[Ontology Alignment]
+            OntSync[Ontology Sync]
             RDFGen[RDF Generator]
         end
         
-        subgraph "Retrieval Agents"
+        subgraph "Retrieval Agents (6+)"
             SPARQLGen[SPARQL Generator]
             VectorSearch[Vector Search]
+            QueryDecomp[Smart Query Decomposer]
             Synthesis[Synthesis Optimizer]
+            Critique[Answer Critique]
+            IterRefine[Iterative Refinement]
         end
         
         subgraph "Schema Evolution"
@@ -41,7 +48,7 @@ graph TB
     
     subgraph "Storage Layer"
         Fuseki[(Apache Fuseki<br/>Knowledge Graph)]
-        Milvus[(Milvus<br/>Vector Store)]
+        Milvus[(Milvus<br/>1024-dim Vectors)]
         TextIdx[Jena Text Index]
     end
     
@@ -60,14 +67,23 @@ graph TB
     Eval --> LG
     
     LG --> ReAct
+    LG --> Iter
     ReAct --> SPARQLGen
     ReAct --> VectorSearch
+    ReAct --> QueryDecomp
     ReAct --> Synthesis
     
+    Synthesis --> Critique
+    Critique --> IterRefine
+    IterRefine -.->|Refine if needed| ReAct
+    
+    BatchProc --> DocParse
+    DirScan --> BatchProc
     DocParse --> EntityExt
     EntityExt --> ClauseExt
     ClauseExt --> OntAlign
-    OntAlign --> RDFGen
+    OntAlign --> OntSync
+    OntSync --> RDFGen
     
     RDFGen --> Fuseki
     RDFGen --> Milvus
@@ -84,6 +100,7 @@ graph TB
     
     LG -.-> Phoenix
     ReAct -.-> Phoenix
+    Iter -.-> Phoenix
     SPARQLGen -.-> Logs
     VectorSearch -.-> Logs
 ```

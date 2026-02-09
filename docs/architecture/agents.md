@@ -6,8 +6,8 @@ This document explains the multi-agent architecture used in the Contract Knowled
 
 The system uses specialized agents that collaborate to accomplish complex tasks:
 
-- **Ingestion Agents** - Extract and structure contract data
-- **Retrieval Agents** - Answer queries using hybrid search
+- **Ingestion Agents (10+)** - Extract and structure contract data with batch processing
+- **Retrieval Agents (6+)** - Answer queries using hybrid search with iterative refinement
 - **Schema Evolution Agents** - Extend the ontology dynamically
 - **Orchestrators** - Coordinate multi-agent workflows
 
@@ -15,43 +15,58 @@ The system uses specialized agents that collaborate to accomplish complex tasks:
 
 ```mermaid
 graph TB
-    subgraph "Ingestion Pipeline"
+    subgraph "Ingestion Pipeline (10+ Agents)"
+        DirScan[Directory Scanner]
+        BatchProc[Batch Processor]
         DocAgent[Document Ingestion Agent]
+        EnhancedDoc[Enhanced Document Ingestion]
         ClauseAgent[Clause Extraction Agent]
         EntityAgent[Entity Extraction Agent]
         ObligAgent[Obligation/Risk Agent]
         AlignAgent[Ontology Alignment Agent]
+        OntSync[Ontology Sync Agent]
         RDFAgent[RDF Generator Agent]
         ValidAgent[Validation Agent]
         LoadAgent[Fuseki Loader Agent]
         ReasonAgent[Reasoning Agent]
         VectorAgent[Vector Index Agent]
         
-        DocAgent --> ClauseAgent
+        DirScan --> BatchProc
+        BatchProc --> DocAgent
+        DocAgent --> EnhancedDoc
+        EnhancedDoc --> ClauseAgent
         ClauseAgent --> EntityAgent
         EntityAgent --> ObligAgent
         ObligAgent --> AlignAgent
-        AlignAgent --> RDFAgent
+        AlignAgent --> OntSync
+        OntSync --> RDFAgent
         RDFAgent --> ValidAgent
         ValidAgent --> LoadAgent
         LoadAgent --> ReasonAgent
         ReasonAgent --> VectorAgent
     end
     
-    subgraph "Retrieval Pipeline"
+    subgraph "Retrieval Pipeline (6+ Agents)"
         QueryRouter[Query Router]
         SimpleAgent[Simple Query Agent]
         ReActAgent[ReAct Agent]
+        QueryDecomp[Smart Query Decomposer]
         SPARQLAgent[SPARQL Generator]
         VectorSearch[Vector Search]
         SynthAgent[Synthesis Agent]
+        CritiqueAgent[Answer Critique Agent]
+        IterAgent[Iterative Orchestrator]
         
         QueryRouter --> SimpleAgent
         QueryRouter --> ReActAgent
-        ReActAgent --> SPARQLAgent
-        ReActAgent --> VectorSearch
+        ReActAgent --> QueryDecomp
+        QueryDecomp --> SPARQLAgent
+        QueryDecomp --> VectorSearch
         SimpleAgent --> SynthAgent
         ReActAgent --> SynthAgent
+        SynthAgent --> CritiqueAgent
+        CritiqueAgent --> IterAgent
+        IterAgent -.->|Refine if needed| ReActAgent
     end
     
     subgraph "Schema Evolution"
@@ -68,6 +83,8 @@ graph TB
     style DocAgent fill:#e1f5ff
     style QueryRouter fill:#fff4e1
     style PatternAgent fill:#e8f5e9
+    style CritiqueAgent fill:#ffe1e1
+    style IterAgent fill:#ffe1e1
 ```
 
 ## Agent Types
