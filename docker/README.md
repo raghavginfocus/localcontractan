@@ -260,6 +260,174 @@ docker-compose up -d
 | Attu (optional) | http://localhost:8080 | Milvus UI |
 | MkDocs | http://localhost:8000 | Documentation |
 
+## Testing Automatic Initialization
+
+### Prerequisites
+
+- Docker and Docker Compose installed
+- Git repository cloned
+- No existing Fuseki containers running on port 3030
+
+### Testing Steps
+
+#### 1. Clean Environment
+
+```bash
+# Stop any existing containers
+cd docker
+docker-compose down -v
+
+# Remove any existing Fuseki images
+docker rmi $(docker images | grep fuseki | awk '{print $3}') 2>/dev/null || true
+
+# Verify port 3030 is free
+lsof -i :3030
+```
+
+#### 2. Build and Start Services
+
+```bash
+# Build the custom Fuseki image
+docker-compose build fuseki
+
+# Start Fuseki service
+docker-compose up -d fuseki
+
+# Watch the initialization logs
+docker-compose logs -f fuseki
+```
+
+#### 3. Expected Log Output
+
+```
+==========================================
+Contract KG - Fuseki Initialization
+==========================================
+[INFO] Waiting for Fuseki to start...
+[SUCCESS] Fuseki is ready!
+[INFO] Creating 'contracts' dataset with TDB2 backend...
+[SUCCESS] Dataset 'contracts' created successfully
+[INFO] Loading procurement ontology...
+[SUCCESS] Ontology loaded successfully
+          Total triples: 500+
+[SUCCESS] Fuseki Initialization Complete!
+```
+
+#### 4. Verify Dataset Creation
+
+```bash
+# Check if dataset exists
+curl -u admin:admin123 http://localhost:3030/$/datasets
+```
+
+#### 5. Verify Ontology Loading
+
+```bash
+# Query triple count
+curl -u admin:admin123 \
+  "http://localhost:3030/contracts/query" \
+  -H "Accept: application/sparql-results+json" \
+  --data-urlencode "query=SELECT (COUNT(*) as ?count) WHERE { ?s ?p ?o }"
+
+# Expected: Should return count > 500 triples
+```
+
+#### 6. Test Idempotency (Restart Container)
+
+```bash
+# Restart the container
+docker-compose restart fuseki
+
+# Watch logs again
+docker-compose logs -f fuseki
+
+# Expected output should show:
+# [SUCCESS] Dataset 'contracts' already exists (skipping creation)
+# [SUCCESS] Ontology already loaded (XXX triples found)
+```
+
+#### 7. Test with Fresh Start
+
+```bash
+# Stop and remove volumes
+docker-compose down -v
+
+# Start again
+docker-compose up -d fuseki
+
+# Watch logs - should create dataset and load ontology again
+docker-compose logs -f fuseki
+```
+
+#### 8. Access Fuseki UI
+
+Open browser to http://localhost:3030
+- Login with: admin / admin123
+- Verify dataset 'contracts' is listed
+- Can run SPARQL queries
+- Triple count matches logs
+
+#### 9. Test with Full Stack
+
+```bash
+# Start all services
+docker-compose up -d
+
+# Check health of all services
+docker-compose ps
+
+# All services should show "healthy" status
+```
+
+### Success Criteria
+
+- Fuseki container starts successfully
+- Initialization script runs without errors
+- Dataset 'contracts' is created
+- Ontology is loaded (500+ triples)
+- Reasoning rules file is detected
+- Container restart is idempotent (no duplicate data)
+- Fuseki UI is accessible at http://localhost:3030
+- SPARQL queries work correctly
+
+### Performance Expectations
+
+- Container startup: < 30 seconds
+- Dataset creation: < 5 seconds
+- Ontology loading: < 10 seconds
+- Total initialization: < 45 seconds
+
+### Troubleshooting Tests
+
+**Container fails to start:**
+```bash
+docker-compose logs fuseki
+# Common causes: Port 3030 in use, insufficient memory, permission issues
+```
+
+**Dataset not created:**
+```bash
+curl http://localhost:3030/$/ping
+docker-compose exec fuseki cat /docker-entrypoint.d/init-fuseki.sh
+docker-compose exec fuseki ls -lh /staging/ontology/
+```
+
+**Ontology not loading:**
+```bash
+docker-compose exec fuseki cat /staging/ontology/procurement.owl | head -20
+# Try manual load if needed
+```
+
+### Cleanup After Testing
+
+```bash
+# Stop all services
+docker-compose down -v
+
+# Remove images
+docker rmi $(docker images | grep contract-kg | awk '{print $3}')
+```
+
 ## Related Documentation
 
 - [Setup Guide](../docs/getting-started/setup-guide.md) - Detailed setup instructions
@@ -272,6 +440,15 @@ docker-compose up -d
 2. Verify health: `make health` (from project root)
 3. See [Troubleshooting Guide](../docs/troubleshooting.md)
 4. Open an issue with logs
+
+## Notes for Container Deployment
+
+This implementation is specifically designed for Docker container deployment:
+- All initialization happens inside the container
+- No external scripts or manual steps required
+- Idempotent and safe for orchestration tools (Kubernetes, Docker Swarm)
+- Logs provide clear visibility into initialization process
+- Health checks ensure container is ready before accepting traffic
 
 ---
 
