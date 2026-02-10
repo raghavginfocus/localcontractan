@@ -7,8 +7,11 @@
 
 services:
   # Apache Jena Fuseki SPARQL Server with Text Indexing
+  # Uses custom Dockerfile for automatic dataset and ontology initialization
   fuseki:
-    image: stain/jena-fuseki:latest
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.fuseki
     container_name: contract-kg-fuseki
     ports:
       - "3030:3030"
@@ -17,9 +20,6 @@ services:
       - JVM_ARGS=-Xmx2g -Djena.text.lucene.version=LUCENE_9
     volumes:
       - fuseki-data:/fuseki
-      - ../ontology:/staging/ontology:ro
-      - ../rules:/staging/rules:ro
-      - ../docker/fuseki-config.ttl:/staging/fuseki-config.ttl:ro
     networks:
       - contract-kg-network
     healthcheck:
@@ -27,6 +27,7 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+      start_period: 45s
     restart: unless-stopped
 
   # Milvus Dependencies - etcd

@@ -4,17 +4,17 @@
 
 A production-ready, multi-agent system for automated contract analysis, risk assessment, and compliance checking using Apache Jena Knowledge Graphs, Vector Search, and LLM-powered reasoning.
 
-##  Overview
+## Overview
 
 Transform unstructured contract documents into a queryable semantic knowledge graph with automatic risk detection, compliance checking, and intelligent question answering.
 
 **Key Capabilities:**
--  **Automated Ingestion**: Extract clauses, entities, obligations from PDF/DOCX contracts
--  **Semantic Understanding**: LLM-powered clause classification and entity recognition
--  **Hybrid Search**: Combines vector similarity + SPARQL graph queries
--  **Risk Detection**: Automatic identification of high-risk clauses and compliance issues
--  **Multi-Agent System**: 10+ specialized agents for ingestion, retrieval, and reasoning
--  **Observability**: Full tracing with Phoenix, structured logging, performance metrics
+- **Automated Ingestion**: Extract clauses, entities, obligations from PDF/DOCX contracts
+- **Semantic Understanding**: LLM-powered clause classification and entity recognition
+- **Hybrid Search**: Combines vector similarity + SPARQL graph queries
+- **Risk Detection**: Automatic identification of high-risk clauses and compliance issues
+- **Multi-Agent System**: 10+ specialized agents for ingestion, retrieval, and reasoning
+- **Observability**: Full tracing with Phoenix, structured logging, performance metrics
 
 **Technology Stack:**
 - **Knowledge Graph**: Apache Jena Fuseki + TDB2 with OWL ontology
@@ -23,7 +23,7 @@ Transform unstructured contract documents into a queryable semantic knowledge gr
 - **Orchestration**: LangGraph for agent workflows
 - **Observability**: Arize Phoenix for tracing and evaluation
 
-##  Quick Start
+## Quick Start
 
 ```bash
 # 1. Install dependencies
@@ -31,17 +31,36 @@ make install
 
 # 2. Setup environment
 make setup-env
+# Edit agents/.env with your API keys (WatsonX, OpenAI, etc.)
 
-# 3. Start all services (Fuseki, Milvus, Ollama, Phoenix)
+# 3. Start all services (automatic initialization!)
 make services-up
+# Automatically creates dataset, loads ontology, configures text indexing
 
-# 4. View documentation
+# 4. Verify system health
+make health
+
+# 5. Run ingestion on sample contracts
+make ingest DIR=examples
+
+# 6. View documentation
 make docs-docker-up
 ```
 
 Visit http://localhost:8000 for complete documentation.
 
-## 📚 Documentation
+### What Happens Automatically
+
+When you run `make services-up`, the system automatically:
+- Creates Fuseki dataset (`contracts`)
+- Loads base ontology (`ontology/procurement.owl`)
+- Configures text indexing for fast search
+- Prepares reasoning rules
+- Initializes all services (Fuseki, Milvus, Phoenix)
+
+**No manual dataset or ontology setup required!** See [Setup Guide](docs/getting-started/setup-guide.md) for details.
+
+## Documentation
 
 ### Docker-based Documentation Server (Recommended)
 
@@ -62,10 +81,10 @@ make docs-docker-logs
 ```
 
 **Benefits:**
--  Auto-reload on file changes (no restart needed)
--  Consistent environment
--  No local Python dependencies required
--  Runs alongside other services
+- Auto-reload on file changes (no restart needed)
+- Consistent environment
+- No local Python dependencies required
+- Runs alongside other services
 
 ### Local Documentation Server
 
@@ -86,50 +105,50 @@ make docs-build
 make docs-deploy
 ```
 
-##  System Architecture
+## System Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                     Contract Documents (PDF/DOCX)                │
-└────────────────────────────┬────────────────────────────────────┘
-                             │
-                             ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                    INGESTION PIPELINE (10+ Agents)               │
-│  Document → Clause Extraction → Entity Extraction → RDF Gen     │
-│  → Validation → Fuseki Load → Vector Index → Reasoning          │
-│  → Batch Processing → Ontology Sync                             │
-└──────────────────┬──────────────────────┬───────────────────────┘
-                   │                      │
-                   ▼                      ▼
-        ┌──────────────────┐   ┌──────────────────┐
-        │  Apache Jena     │   │  Milvus Vector   │
-        │  Fuseki (SPARQL) │   │  Store (Search)  │
-        │  + OWL Ontology  │   │  1024-dim vectors│
-        └──────────┬───────┘   └────────┬─────────┘
-                   │                    │
-                   └────────┬───────────┘
-                            │
-                            ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                  RETRIEVAL PIPELINE (6+ Agents)                  │
-│  Query Analysis → Complexity Detection → Hybrid Retrieval        │
-│  → Answer Synthesis (Simple RAG or ReAct Multi-Step)            │
-│                                                                  │
-│  ┌──────────────────────────────────────────────────────────┐  │
-│  │  Iterative Refinement Loop (for complex queries)         │  │
-│  │  Answer → Critique Agent → Quality Check                 │  │
-│  │     ↓           ↓                                         │  │
-│  │     └───────────┴─→ Refine & Re-retrieve (if needed)     │  │
-│  └──────────────────────────────────────────────────────────┘  │
-└─────────────────────────────────────────────────────────────────┘
-                            │
-                            ▼
-                    ┌───────────────┐
-                    │ Final Response│
-                    │  + Citations  │
-                    │  + Confidence │
-                    └───────────────┘
+
+Contract Documents (PDF/DOCX) 
+
+
+
+
+INGESTION PIPELINE (10+ Agents) 
+Document → Clause Extraction → Entity Extraction → RDF Gen 
+→ Validation → Fuseki Load → Vector Index → Reasoning 
+→ Batch Processing → Ontology Sync 
+
+
+
+
+Apache Jena Milvus Vector 
+Fuseki (SPARQL) Store (Search) 
++ OWL Ontology 1024-dim vectors
+
+
+
+
+
+
+RETRIEVAL PIPELINE (6+ Agents) 
+Query Analysis → Complexity Detection → Hybrid Retrieval 
+→ Answer Synthesis (Simple RAG or ReAct Multi-Step) 
+
+
+Iterative Refinement Loop (for complex queries) 
+Answer → Critique Agent → Quality Check 
+↓ ↓ 
+→ Refine & Re-retrieve (if needed) 
+
+
+
+
+
+Final Response
++ Citations 
++ Confidence 
+
 ```
 
 **Core Components:**
@@ -140,7 +159,7 @@ make docs-deploy
 - **LLM Providers**: IBM WatsonX AI, Ollama (local models)
 - **Observability**: Arize Phoenix tracing, structured logging, performance metrics
 
-##  Key Features
+## Key Features
 
 - **Document Ingestion**: PDF/DOCX processing with clause extraction
 - **Entity Recognition**: Contract parties, dates, obligations
@@ -149,7 +168,7 @@ make docs-deploy
 - **Query Routing**: Automatic complexity detection
 - **Schema Evolution**: Dynamic ontology updates
 
-##  Services
+## Services
 
 ```bash
 # View all service URLs
@@ -162,7 +181,7 @@ make urls
 - **Phoenix**: http://localhost:6006
 - **Documentation**: http://localhost:8000
 
-##  Testing
+## Testing
 
 ```bash
 # Run all tests
@@ -176,7 +195,7 @@ make test-fuseki
 make test-complexity
 ```
 
-##  Common Workflows
+## Common Workflows
 
 ```bash
 # Complete quickstart
@@ -198,7 +217,7 @@ make ingest-override DIR=examples
 make ingest-test
 ```
 
-##  API Testing
+## API Testing
 
 ```bash
 # Query API directly
@@ -214,7 +233,7 @@ make api-test-all
 make api-test-custom YAML=path/to/test.yaml
 ```
 
-##  Service Management
+## Service Management
 
 ```bash
 # Start all services
@@ -241,7 +260,7 @@ make services-logs-milvus
 make health
 ```
 
-##  Logs & Analysis
+## Logs & Analysis
 
 ```bash
 # View latest logs
@@ -272,7 +291,7 @@ make logs-analyze-retrieval-last N=10
 make logs-analyze-retrieval-save
 ```
 
-##  Verification
+## Verification
 
 ```bash
 # Verify complete pipeline
@@ -294,14 +313,14 @@ make check-milvus-data
 make check-fuseki-data
 ```
 
-##  Querying
+## Querying
 
 ```bash
 # Run custom SPARQL query
 make query-custom SPARQL="SELECT * WHERE { ?s ?p ?o } LIMIT 10"
 ```
 
-## 🛠 Development
+## Development
 
 ```bash
 # Check dependencies
@@ -326,7 +345,7 @@ make info
 make help
 ```
 
-##  Agents API (Docker)
+## Agents API (Docker)
 
 ```bash
 # Build agents API Docker image
@@ -350,7 +369,7 @@ make api-health
 make api-test
 ```
 
-##  Java/Maven (Jena Core)
+## Java/Maven (Jena Core)
 
 ```bash
 # Clean Maven build
@@ -369,17 +388,17 @@ make maven-package
 make maven-install
 ```
 
-##  Documentation Structure
+## Documentation Structure
 
 Comprehensive documentation available at http://localhost:8000 (after running `make docs-docker-up`):
 
 - **Getting Started**: Installation, configuration, quickstart guide
 - **Architecture**: System overview, multi-agent design, hybrid RAG, knowledge graph
 - **User Guides**:
-  - Document ingestion pipeline (complete deep dive)
-  - Query & retrieval strategies
-  - Schema evolution and ontology management
-  - Observability and monitoring
+- Document ingestion pipeline (complete deep dive)
+- Query & retrieval strategies
+- Schema evolution and ontology management
+- Observability and monitoring
 - **API Reference**: Complete API documentation for all agents, storage, and LLM providers
 - **Development**: Contributing guidelines, testing strategies, deployment guides
 - **Performance**: Optimization techniques, benchmarks, scaling strategies
@@ -390,15 +409,15 @@ Comprehensive documentation available at http://localhost:8000 (after running `m
 - [Quick Start Guide](docs/getting-started/quickstart.md) - Get up and running in 5 minutes
 
 
-##  Contributing
+## Contributing
 
 See [docs/development/contributing.md](docs/development/contributing.md) for contribution guidelines.
 
-##  License
+## License
 
 [Add your license here]
 
-##  Links
+## Links
 
 - [Full Documentation](http://localhost:8000) (after running `make docs-docker-up`)
 - [Apache Jena](https://jena.apache.org/)
