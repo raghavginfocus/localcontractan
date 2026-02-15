@@ -301,7 +301,8 @@ data-migrate-milvus: ## Migrate Milvus schema
 
 ##@ Ingestion Pipeline
 
-ingest: ## Run enhanced ingestion pipeline with batch processing (usage: make ingest DIR=examples)
+# Direct Python script execution (legacy)
+ingest-script: ## Run ingestion using Python script directly (usage: make ingest-script DIR=examples)
 	@if [ -z "$(DIR)" ]; then \
 		echo "$(YELLOW)No directory specified, using default: examples$(NC)"; \
 		DIR="examples"; \
@@ -310,7 +311,7 @@ ingest: ## Run enhanced ingestion pipeline with batch processing (usage: make in
 	cd $(AGENTS_DIR) && $(PYTHONPATH) $(PYTHON) ../scripts/ingestion/run_enhanced_ingestion.py --directory ../$$DIR
 	@echo "$(GREEN)✓ Ingestion complete$(NC)"
 
-ingest-override: ## Force reprocess all documents (usage: make ingest-override DIR=examples)
+ingest-script-override: ## Force reprocess using script (usage: make ingest-script-override DIR=examples)
 	@if [ -z "$(DIR)" ]; then \
 		echo "$(YELLOW)No directory specified, using default: examples$(NC)"; \
 		DIR="examples"; \
@@ -318,6 +319,43 @@ ingest-override: ## Force reprocess all documents (usage: make ingest-override D
 	echo "$(BLUE)Running enhanced ingestion with override on $$DIR...$(NC)"; \
 	cd $(AGENTS_DIR) && $(PYTHONPATH) $(PYTHON) ../scripts/ingestion/run_enhanced_ingestion.py --directory ../$$DIR --override
 	@echo "$(GREEN)✓ Ingestion complete (with override)$(NC)"
+
+# API-based ingestion (recommended)
+ingest: ## Run ingestion via API gateway (usage: make ingest DIR=examples)
+	@if [ -z "$(DIR)" ]; then \
+		echo "$(YELLOW)No directory specified, using default: examples$(NC)"; \
+		DIR="examples"; \
+	fi; \
+	echo "$(BLUE)Running ingestion via API on $$DIR...$(NC)"; \
+	@echo "$(YELLOW)Calling ingestion API at http://localhost:8080/api/v1/ingest$(NC)"; \
+	curl -X POST http://localhost:8080/api/v1/ingest \
+		-H "Content-Type: application/json" \
+		-d "{\"directory\": \"$$DIR\", \"override\": false}" | python3 -m json.tool || echo "$(RED)Error: API not responding$(NC)"
+	@echo "$(GREEN)✓ Ingestion request submitted$(NC)"
+
+ingest-override: ## Force reprocess via API (usage: make ingest-override DIR=examples)
+	@if [ -z "$(DIR)" ]; then \
+		echo "$(YELLOW)No directory specified, using default: examples$(NC)"; \
+		DIR="examples"; \
+	fi; \
+	echo "$(BLUE)Running ingestion with override via API on $$DIR...$(NC)"; \
+	@echo "$(YELLOW)Calling ingestion API at http://localhost:8080/api/v1/ingest$(NC)"; \
+	curl -X POST http://localhost:8080/api/v1/ingest \
+		-H "Content-Type: application/json" \
+		-d "{\"directory\": \"$$DIR\", \"override\": true}" | python3 -m json.tool || echo "$(RED)Error: API not responding$(NC)"
+	@echo "$(GREEN)✓ Ingestion request submitted (with override)$(NC)"
+
+ingest-file: ## Ingest single file via API (usage: make ingest-file FILE=path/to/file.pdf)
+	@if [ -z "$(FILE)" ]; then \
+		echo "$(RED)Error: FILE parameter required$(NC)"; \
+		echo "Usage: make ingest-file FILE=examples/contract.pdf"; \
+		exit 1; \
+	fi
+	@echo "$(BLUE)Uploading file via API: $(FILE)$(NC)"; \
+	@echo "$(YELLOW)Calling ingestion API at http://localhost:8080/api/v1/ingest/upload$(NC)"; \
+	curl -X POST http://localhost:8080/api/v1/ingest/upload \
+		-F "file=@$(FILE)" | python3 -m json.tool || echo "$(RED)Error: API not responding$(NC)"
+	@echo "$(GREEN)✓ File upload complete$(NC)"
 
 ingest-test: ## Run full ingestion test
 	@echo "$(BLUE)Running ingestion test...$(NC)"
@@ -331,13 +369,31 @@ retrieval-test: ## Test retrieval pipeline
 
 ##@ Querying
 
-query-custom: ## Run custom SPARQL query (usage: make query-custom SPARQL="SELECT * WHERE { ?s ?p ?o } LIMIT 10")
+# Direct SPARQL query (bypasses API, for debugging)
+query-sparql: ## Run custom SPARQL query directly on Fuseki (usage: make query-sparql SPARQL="SELECT * WHERE { ?s ?p ?o } LIMIT 10")
 	@if [ -z "$(SPARQL)" ]; then \
 		echo "$(RED)Error: SPARQL parameter required$(NC)"; \
-		echo "Usage: make query-custom SPARQL=\"SELECT * WHERE { ?s ?p ?o } LIMIT 10\""; \
+		echo "Usage: make query-sparql SPARQL=\"SELECT * WHERE { ?s ?p ?o } LIMIT 10\""; \
 		exit 1; \
 	fi
+	@echo "$(BLUE)Running SPARQL query directly on Fuseki...$(NC)"
 	cd $(AGENTS_DIR) && $(PYTHONPATH) $(PYTHON) ../scripts/analysis/query_data.py --query "$(SPARQL)"
+
+# Natural language query via API (recommended)
+query: ## Ask natural language question via API (usage: make query Q="What are the termination clauses?")
+	@if [ -z "$(Q)" ]; then \
+		echo "$(RED)Error: Q parameter required$(NC)"; \
+		echo "Usage: make query Q=\"What are the termination clauses in the contracts?\""; \
+		exit 1; \
+	fi
+	@echo "$(BLUE)Querying API via gateway...$(NC)"
+	@echo "$(YELLOW)Question: $(Q)$(NC)"
+	@echo ""
+	@curl -s -X POST http://localhost:8080/api/v1/query \
+		-H "Content-Type: application/json" \
+		-d "{\"query\": \"$(Q)\", \"max_results\": 10, \"include_reasoning\": true}" | \
+		python3 -m json.tool || echo "$(RED)Error: API not responding or invalid response$(NC)"
+
 ##@ API Testing
 
 api-query: ## Query API via gateway (usage: make api-query Q="What are the termination clauses?")
