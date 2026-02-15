@@ -88,6 +88,33 @@ health: ## Check health of all services
 
 ##@ Microservices (Docker)
 
+# Complete rebuild commands
+rebuild-all: ## Clean rebuild all containers (Fuseki + Microservices)
+	@echo "$(BLUE)Cleaning and rebuilding all containers...$(NC)"
+	@echo "$(YELLOW)Step 1: Stopping all services...$(NC)"
+	cd $(DOCKER_DIR) && docker-compose down
+	@echo "$(YELLOW)Step 2: Removing old images...$(NC)"
+	cd $(DOCKER_DIR) && docker-compose rm -f
+	@echo "$(YELLOW)Step 3: Building Fuseki with automatic initialization...$(NC)"
+	cd $(DOCKER_DIR) && docker-compose build fuseki
+	@echo "$(YELLOW)Step 4: Building all microservices...$(NC)"
+	cd $(DOCKER_DIR) && docker-compose build ingestion-api retrieval-api api-gateway
+	@echo "$(GREEN)✓ All containers rebuilt successfully$(NC)"
+
+rebuild-fuseki: ## Rebuild Fuseki container only
+	@echo "$(BLUE)Rebuilding Fuseki container...$(NC)"
+	cd $(DOCKER_DIR) && docker-compose stop fuseki
+	cd $(DOCKER_DIR) && docker-compose rm -f fuseki
+	cd $(DOCKER_DIR) && docker-compose build fuseki
+	@echo "$(GREEN)✓ Fuseki container rebuilt$(NC)"
+
+rebuild-microservices: ## Rebuild all microservice containers
+	@echo "$(BLUE)Rebuilding microservice containers...$(NC)"
+	cd $(DOCKER_DIR) && docker-compose stop ingestion-api retrieval-api api-gateway
+	cd $(DOCKER_DIR) && docker-compose rm -f ingestion-api retrieval-api api-gateway
+	cd $(DOCKER_DIR) && docker-compose build ingestion-api retrieval-api api-gateway
+	@echo "$(GREEN)✓ All microservice containers rebuilt$(NC)"
+
 # Build commands
 api-build: ## Build all microservice images
 	@echo "$(BLUE)Building microservice images...$(NC)"
@@ -533,15 +560,19 @@ clean-all: clean clean-logs clean-cache ## Clean everything (files, logs, and ca
 
 urls: ## Display service URLs
 	@echo "$(BLUE)Service URLs:$(NC)"
-	@echo "  $(GREEN)API:$(NC)         http://localhost:8001"
-	@echo "  $(GREEN)API Docs:$(NC)    http://localhost:8001/docs"
-	@echo "  $(GREEN)Fuseki:$(NC)      http://localhost:3030 (admin/admin123)"
-	@echo "  $(GREEN)Milvus:$(NC)      http://localhost:19530"
-	@echo "  $(GREEN)Attu (UI):$(NC)   http://localhost:8080"
-	@echo "  $(GREEN)MinIO:$(NC)       http://localhost:9001"
-	@echo "  $(GREEN)Ollama:$(NC)      http://localhost:11434"
-	@echo "  $(GREEN)Phoenix:$(NC)     http://localhost:6006"
-	@echo "  $(GREEN)Docs:$(NC)        http://localhost:8000"
+	@echo "  $(GREEN)API Gateway:$(NC)      http://localhost:8080 (unified interface)"
+	@echo "  $(GREEN)Gateway Docs:$(NC)     http://localhost:8080/docs"
+	@echo "  $(GREEN)Ingestion API:$(NC)    http://localhost:8001"
+	@echo "  $(GREEN)Ingestion Docs:$(NC)   http://localhost:8001/docs"
+	@echo "  $(GREEN)Retrieval API:$(NC)    http://localhost:8002"
+	@echo "  $(GREEN)Retrieval Docs:$(NC)   http://localhost:8002/docs"
+	@echo "  $(GREEN)Fuseki:$(NC)           http://localhost:3030 (admin/admin123)"
+	@echo "  $(GREEN)Milvus:$(NC)           http://localhost:19530"
+	@echo "  $(GREEN)Attu (UI):$(NC)        http://localhost:8081 (with --profile with-ui)"
+	@echo "  $(GREEN)MinIO:$(NC)            http://localhost:9001"
+	@echo "  $(GREEN)Ollama:$(NC)           http://localhost:11434"
+	@echo "  $(GREEN)Phoenix:$(NC)          http://localhost:6006"
+	@echo "  $(GREEN)Docs:$(NC)             http://localhost:8000"
 
 check-deps: ## Check if required tools are installed
 	@echo "$(BLUE)Checking dependencies...$(NC)"
