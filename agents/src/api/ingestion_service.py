@@ -412,9 +412,10 @@ async def run_ingestion_job(job_id: str, file_path: str, override: bool = False)
             logger.info(f"Processing directory: {file_path}")
             
             # Scan directory for documents
-            from agents.ingestion.directory_scanner import DirectoryScanner
-            scanner = DirectoryScanner()
-            files = await scanner.scan_directory(str(path))
+            from agents.ingestion.directory_scanner import DirectoryScannerAgent
+            scanner = DirectoryScannerAgent()
+            scan_result = await scanner.process(str(path))
+            files = [f.path for f in scan_result.discovered_files if f.category != "unsupported"]
             
             if not files:
                 job_manager.mark_completed(job_id, {
