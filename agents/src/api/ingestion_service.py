@@ -189,7 +189,7 @@ async def ingest_document(request: IngestionRequest):
         logger.info(f"Ingesting document: {request.file_path}")
         
         # Run ingestion
-        result = await orchestrator.ingest_document(
+        result = await orchestrator.ingest(
             file_path=request.file_path,
             override=request.override
         )
@@ -244,7 +244,7 @@ async def upload_and_ingest(
         
         try:
             # Run ingestion
-            result = await orchestrator.ingest_document(
+            result = await orchestrator.ingest(
                 file_path=tmp_path,
                 override=override
             )
@@ -401,7 +401,7 @@ async def run_ingestion_job(job_id: str, file_path: str, override: bool = False)
         logger.info(f"Starting ingestion job {job_id}: {file_path}")
         
         # Run ingestion
-        result = await orchestrator.ingest_document(
+        result = await orchestrator.ingest(
             file_path=file_path,
             override=override
         )
