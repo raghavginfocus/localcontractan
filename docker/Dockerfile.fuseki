@@ -5,7 +5,8 @@ FROM stain/jena-fuseki:latest
 USER root
 
 # Install curl if not present (needed for init script)
-RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
+# Note: Fuseki base image uses Alpine Linux, so we use apk instead of apt-get
+RUN apk add --no-cache curl bash
 
 # Copy ontology and rules files
 COPY ontology/ /staging/ontology/
