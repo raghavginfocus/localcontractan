@@ -391,7 +391,7 @@ query: ## Ask natural language question via API (usage: make query Q="What are t
 	@echo ""
 	@curl -s -X POST http://localhost:8080/api/v1/query \
 		-H "Content-Type: application/json" \
-		-d "{\"query\": \"$(Q)\", \"max_results\": 10, \"include_reasoning\": true}" | \
+		-d "{\"query\": \"$(Q)\", \"max_results\": 10}" | \
 		python3 -m json.tool || echo "$(RED)Error: API not responding or invalid response$(NC)"
 
 ##@ API Testing
@@ -407,7 +407,7 @@ api-query: ## Query API via gateway (usage: make api-query Q="What are the termi
 	@echo ""
 	@curl -s -X POST http://localhost:8080/api/v1/query \
 		-H "Content-Type: application/json" \
-		-d "{\"query\": \"$(Q)\", \"max_results\": 10, \"include_reasoning\": true}" | \
+		-d "{\"query\": \"$(Q)\", \"max_results\": 10}" | \
 		python3 -m json.tool || echo "$(RED)Error: API not responding or invalid response$(NC)"
 
 api-query-direct: ## Query retrieval service directly (usage: make api-query-direct Q="...")
@@ -418,7 +418,7 @@ api-query-direct: ## Query retrieval service directly (usage: make api-query-dir
 	@echo "$(BLUE)Querying retrieval service directly...$(NC)"
 	@curl -s -X POST http://localhost:8002/api/v1/query \
 		-H "Content-Type: application/json" \
-		-d "{\"query\": \"$(Q)\", \"max_results\": 10, \"include_reasoning\": true}" | \
+		-d "{\"query\": \"$(Q)\", \"max_results\": 10}" | \
 		python3 -m json.tool || echo "$(RED)Error: Retrieval service not responding$(NC)"
 
 api-test-simple: ## Test API with simple test cases

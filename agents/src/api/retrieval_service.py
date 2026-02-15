@@ -34,7 +34,6 @@ class QueryRequest(BaseModel):
     """Request model for query endpoint."""
     query: str = Field(..., description="Natural language query")
     max_results: int = Field(10, ge=1, le=100, description="Maximum number of results")
-    include_reasoning: bool = Field(True, description="Include reasoning steps")
 
 
 class QueryResponse(BaseModel):
@@ -188,15 +187,14 @@ async def query(request: QueryRequest):
         # Run retrieval
         result = await orchestrator.process_query(
             query=request.query,
-            max_results=request.max_results,
-            include_reasoning=request.include_reasoning
+            max_results=request.max_results
         )
         
         return QueryResponse(
             query=request.query,
             answer=result.get("answer", "No answer generated"),
             sources=result.get("sources", []),
-            reasoning_steps=result.get("reasoning_steps") if request.include_reasoning else None,
+            reasoning_steps=result.get("reasoning_steps"),
             metadata=result.get("metadata", {})
         )
         
