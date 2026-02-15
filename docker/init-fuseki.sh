@@ -1,68 +1,123 @@
 #!/bin/bash
-# Initialize Fuseki with the contracts dataset + text indexing
+# Automatic Fuseki Initialization Script
+# Creates dataset, loads ontology, and configures text indexing
+# This script runs automatically when the Fuseki container starts
 
 set -e
 
-echo "Initializing Fuseki for Contract Knowledge Graph..."
+echo "=========================================="
+echo "Contract KG - Fuseki Initialization"
+echo "=========================================="
 
-# Wait for Fuseki to be ready
+# Wait for Fuseki to be fully ready
+echo "[INFO] Waiting for Fuseki to start..."
+MAX_RETRIES=30
+RETRY_COUNT=0
+
 until curl -s http://localhost:3030/$/ping > /dev/null 2>&1; do
-    echo "Waiting for Fuseki to start..."
+    RETRY_COUNT=$((RETRY_COUNT + 1))
+    if [ $RETRY_COUNT -ge $MAX_RETRIES ]; then
+        echo "[ERROR] Fuseki failed to start after ${MAX_RETRIES} attempts"
+        exit 1
+    fi
+    echo "   Attempt $RETRY_COUNT/$MAX_RETRIES..."
     sleep 2
 done
 
-echo "Fuseki is ready. Creating dataset with text indexing..."
+echo "[SUCCESS] Fuseki is ready!"
+echo ""
 
-# Create the contracts dataset with TDB2 + text index
-# If config file exists, use it; otherwise create basic dataset
-if [ -f /staging/fuseki-config.ttl ]; then
-    echo "Using custom Fuseki configuration with text indexing..."
-    # Copy config to Fuseki config directory
-    cp /staging/fuseki-config.ttl /fuseki/configuration/fuseki-config.ttl
-    echo "Configuration loaded. Restarting Fuseki to apply..."
-    # Note: In production, you'd restart Fuseki or use API to reload config
+# Check if dataset already exists
+echo "[INFO] Checking for existing dataset..."
+DATASET_EXISTS=$(curl -s -u admin:${ADMIN_PASSWORD:-admin123} \
+    http://localhost:3030/$/datasets 2>/dev/null | grep -c '"ds.name" : "/contracts"' || true)
+
+if [ "$DATASET_EXISTS" -gt 0 ]; then
+    echo "[SUCCESS] Dataset 'contracts' already exists (skipping creation)"
 else
-    echo "Creating dataset with TDB2 backend..."
-    curl -X POST http://localhost:3030/$/datasets \
+    echo "[INFO] Creating 'contracts' dataset with TDB2 backend..."
+    
+    RESPONSE=$(curl -s -w "\n%{http_code}" -X POST http://localhost:3030/$/datasets \
         -u admin:${ADMIN_PASSWORD:-admin123} \
         -H "Content-Type: application/x-www-form-urlencoded" \
-        -d "dbName=contracts&dbType=tdb2"
+        -d "dbName=contracts&dbType=tdb2")
     
-    echo "Dataset 'contracts' created."
+    HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
     
-    # Create text index via SPARQL Update (if jena-text is available)
-    echo "Configuring text index for fast search..."
-    cat > /tmp/text-index-config.ttl << 'EOF'
-@prefix :        <http://jena.apache.org/text#> .
-@prefix proc:    <http://procurement.kg/ontology#> .
-
-[] a :TextIndex ;
-   :directory <file:lucene> ;
-   :entityMap [
-       a :EntityMap ;
-       :entityField "uri" ;
-       :defaultField "text" ;
-       :map (
-           [ :field "text" ; :predicate proc:rawText ]
-           [ :field "summary" ; :predicate proc:summary ]
-           [ :field "keyPoint" ; :predicate proc:hasKeyPoint ]
-       )
-   ] .
-EOF
-    
-    # Note: Text index creation typically requires restart or special API
-    # For now, we'll document it in the setup
-    echo "⚠️  Text index configuration prepared. See docs for activation."
+    if [ "$HTTP_CODE" = "200" ] || [ "$HTTP_CODE" = "201" ]; then
+        echo "[SUCCESS] Dataset 'contracts' created successfully"
+    else
+        echo "[WARNING] Dataset creation returned status: $HTTP_CODE"
+        echo "          (This may be normal if dataset already exists)"
+    fi
 fi
 
-# Load the ontology if available
+echo ""
+
+# Load ontology if available and not already loaded
+echo "[INFO] Checking ontology..."
 if [ -f /staging/ontology/procurement.owl ]; then
-    echo "Loading procurement ontology..."
-    curl -X POST http://localhost:3030/contracts/data \
-        -u admin:${ADMIN_PASSWORD:-admin123} \
-        -H "Content-Type: application/rdf+xml" \
-        --data-binary @/staging/ontology/procurement.owl
-    echo "Ontology loaded."
+    # Check if ontology is already loaded (check for triples)
+    TRIPLE_COUNT=$(curl -s -u admin:${ADMIN_PASSWORD:-admin123} \
+        "http://localhost:3030/contracts/query" \
+        -H "Accept: application/sparql-results+json" \
+        --data-urlencode "query=SELECT (COUNT(*) as ?count) WHERE { ?s ?p ?o }" \
+        2>/dev/null | grep -o '"value":"[0-9]*"' | head -1 | grep -o '[0-9]*' || echo "0")
+    
+    if [ "$TRIPLE_COUNT" -gt 100 ]; then
+        echo "[SUCCESS] Ontology already loaded ($TRIPLE_COUNT triples found)"
+    else
+        echo "[INFO] Loading procurement ontology..."
+        
+        RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
+            http://localhost:3030/contracts/data \
+            -u admin:${ADMIN_PASSWORD:-admin123} \
+            -H "Content-Type: application/rdf+xml" \
+            --data-binary @/staging/ontology/procurement.owl)
+        
+        HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+        
+        if [ "$HTTP_CODE" = "200" ] || [ "$HTTP_CODE" = "201" ] || [ "$HTTP_CODE" = "204" ]; then
+            echo "[SUCCESS] Ontology loaded successfully"
+            
+            # Verify load
+            NEW_TRIPLE_COUNT=$(curl -s -u admin:${ADMIN_PASSWORD:-admin123} \
+                "http://localhost:3030/contracts/query" \
+                -H "Accept: application/sparql-results+json" \
+                --data-urlencode "query=SELECT (COUNT(*) as ?count) WHERE { ?s ?p ?o }" \
+                2>/dev/null | grep -o '"value":"[0-9]*"' | head -1 | grep -o '[0-9]*' || echo "0")
+            
+            echo "          Total triples: $NEW_TRIPLE_COUNT"
+        else
+            echo "[WARNING] Ontology load returned status: $HTTP_CODE"
+        fi
+    fi
+else
+    echo "[WARNING] Ontology file not found at /staging/ontology/procurement.owl"
 fi
 
-echo "Fuseki initialization complete!"
+echo ""
+
+# Load reasoning rules if available
+echo "[INFO] Checking reasoning rules..."
+if [ -f /staging/rules/procurement.rules ]; then
+    echo "[SUCCESS] Reasoning rules found at /staging/rules/procurement.rules"
+    echo "          (Rules will be loaded during ingestion pipeline)"
+else
+    echo "[WARNING] No reasoning rules found"
+fi
+
+echo ""
+echo "=========================================="
+echo "[SUCCESS] Fuseki Initialization Complete!"
+echo "=========================================="
+echo ""
+echo "Service Information:"
+echo "  - Fuseki UI:     http://localhost:3030"
+echo "  - Dataset:       contracts"
+echo "  - Query:         http://localhost:3030/contracts/query"
+echo "  - Update:        http://localhost:3030/contracts/update"
+echo "  - Credentials:   admin / ${ADMIN_PASSWORD:-admin123}"
+echo ""
+echo "Ready for ingestion pipeline!"
+echo ""

@@ -1,22 +1,36 @@
-# Custom Fuseki image with pre-loaded ontology and configuration
-FROM stain/jena-fuseki:4.10.0
+# Custom Fuseki image with automatic dataset and ontology initialization
+FROM stain/jena-fuseki:latest
 
-# Copy ontology files
+# Switch to root for setup
+USER root
+
+# Install curl if not present (needed for init script)
+# Note: Fuseki base image uses Alpine Linux, so we use apk instead of apt-get
+RUN apk add --no-cache curl bash
+
+# Copy ontology and rules files
 COPY ontology/ /staging/ontology/
-
-# Copy reasoning rules
 COPY rules/ /staging/rules/
 
-# Copy initialization script
-COPY docker/init-fuseki.sh /docker-entrypoint-init.d/
+# Copy Fuseki configuration
+COPY docker/fuseki-config.ttl /staging/fuseki-config.ttl
 
-# Set permissions
-USER root
-RUN chmod +x /docker-entrypoint-init.d/init-fuseki.sh
+# Copy and setup initialization script
+COPY docker/init-fuseki.sh /docker-entrypoint.d/init-fuseki.sh
+RUN chmod +x /docker-entrypoint.d/init-fuseki.sh
+
+# Create necessary directories
+RUN mkdir -p /fuseki/databases/contracts /fuseki/configuration && \
+    chown -R fuseki:fuseki /fuseki /staging
+
+# Switch back to fuseki user
 USER fuseki
 
-# Environment
+# Environment variables
 ENV ADMIN_PASSWORD=admin123
-ENV JVM_ARGS="-Xmx2g -Xms512m"
+ENV JVM_ARGS="-Xmx2g -Xms512m -Djena.text.lucene.version=LUCENE_9"
 
 EXPOSE 3030
+
+# The base image's entrypoint will run scripts in /docker-entrypoint.d/
+# Our init-fuseki.sh will execute after Fuseki starts

@@ -157,8 +157,8 @@ def check_milvus():
         )
         print(f"\n✓ Connected to Milvus at {settings.milvus_host}:{settings.milvus_port}")
         
-        # Check collection
-        collection_name = settings.milvus_collection
+        # Check collection - use v2 collection
+        collection_name = settings.milvus_collection_v2
         try:
             collection = Collection(collection_name)
             collection.load()

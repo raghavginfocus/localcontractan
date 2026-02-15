@@ -7,8 +7,11 @@
 
 services:
   # Apache Jena Fuseki SPARQL Server with Text Indexing
+  # Uses custom Dockerfile for automatic dataset and ontology initialization
   fuseki:
-    image: stain/jena-fuseki:latest
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.fuseki
     container_name: contract-kg-fuseki
     ports:
       - "3030:3030"
@@ -17,9 +20,6 @@ services:
       - JVM_ARGS=-Xmx2g -Djena.text.lucene.version=LUCENE_9
     volumes:
       - fuseki-data:/fuseki
-      - ../ontology:/staging/ontology:ro
-      - ../rules:/staging/rules:ro
-      - ../docker/fuseki-config.ttl:/staging/fuseki-config.ttl:ro
     networks:
       - contract-kg-network
     healthcheck:
@@ -27,6 +27,7 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+      start_period: 45s
     restart: unless-stopped
 
   # Milvus Dependencies - etcd
@@ -102,7 +103,7 @@ services:
     image: zilliz/attu:v2.3.5
     container_name: contract-kg-attu
     ports:
-      - "8080:3000"
+      - "8081:3000"
     environment:
       - MILVUS_URL=milvus:19530
     networks:
@@ -166,14 +167,25 @@ services:
       - contract-kg-network
     restart: unless-stopped
 
-  # Agents API - FastAPI service for ingestion and retrieval
-  agents-api:
+  # Ingestion Service - Microservice for document ingestion
+  ingestion-api:
     build:
       context: ../agents
       dockerfile: Dockerfile
-    container_name: contract-kg-agents-api
+    container_name: contract-kg-ingestion-api
+    command:
+      [
+        "python",
+        "-m",
+        "uvicorn",
+        "api.ingestion_service:app",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "8001",
+      ]
     ports:
-      - "8001:8000"
+      - "8001:8001"
     env_file:
       - ../agents/.env
     environment:
@@ -195,11 +207,91 @@ services:
       - milvus
       - phoenix
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 60s
+    restart: unless-stopped
+
+  # Retrieval Service - Microservice for query processing
+  retrieval-api:
+    build:
+      context: ../agents
+      dockerfile: Dockerfile
+    container_name: contract-kg-retrieval-api
+    command:
+      [
+        "python",
+        "-m",
+        "uvicorn",
+        "api.retrieval_service:app",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "8002",
+      ]
+    ports:
+      - "8002:8002"
+    env_file:
+      - ../agents/.env
+    environment:
+      - FUSEKI_URL=http://fuseki:3030
+      - MILVUS_HOST=milvus
+      - MILVUS_PORT=19530
+      - PHOENIX_COLLECTOR_ENDPOINT=http://phoenix:4317
+      - PHOENIX_ENABLED=true
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - ../agents/logs:/app/logs
+      - ../agents/checkpoints:/app/checkpoints
+      - ../agents/data:/app/data
+    networks:
+      - contract-kg-network
+    depends_on:
+      - fuseki
+      - milvus
+      - phoenix
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    restart: unless-stopped
+
+  # API Gateway - Routes requests to microservices
+  api-gateway:
+    build:
+      context: ../agents
+      dockerfile: Dockerfile
+    container_name: contract-kg-api-gateway
+    command:
+      [
+        "python",
+        "-m",
+        "uvicorn",
+        "api.gateway:app",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "8080",
+      ]
+    ports:
+      - "8080:8080"
+    environment:
+      - PYTHONUNBUFFERED=1
+    networks:
+      - contract-kg-network
+    depends_on:
+      - ingestion-api
+      - retrieval-api
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
     restart: unless-stopped
 
 networks:

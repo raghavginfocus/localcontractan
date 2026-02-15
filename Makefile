@@ -86,60 +86,186 @@ health: ## Check health of all services
 	@echo "$(BLUE)Checking service health...$(NC)"
 	cd $(AGENTS_DIR) && $(PYTHONPATH) $(PYTHON) ../scripts/utilities/health_check.py
 
-##@ Agents API (Docker)
+##@ Build Commands (Build images without starting)
 
-api-build: ## Build agents API Docker image
-	@echo "$(BLUE)Building agents API image...$(NC)"
-	cd $(DOCKER_DIR) && docker-compose build agents-api
-	@echo "$(GREEN)✓ API image built$(NC)"
+build-all: ## Build all images (Fuseki + Microservices)
+	@echo "$(BLUE)Building all images...$(NC)"
+	cd $(DOCKER_DIR) && docker-compose build fuseki ingestion-api retrieval-api api-gateway
+	@echo "$(GREEN)✓ All images built$(NC)"
 
-api-build-optimized: ## Build optimized agents API Docker image (smaller size)
-	@echo "$(BLUE)Building optimized agents API image...$(NC)"
-	cd $(AGENTS_DIR) && docker build -f Dockerfile.optimized -t docker-agents-api:optimized .
-	@echo "$(GREEN)✓ Optimized API image built$(NC)"
-	@echo "$(BLUE)Comparing image sizes:$(NC)"
-	@docker images | grep -E "REPOSITORY|docker-agents-api"
+build-fuseki: ## Build Fuseki image only
+	@echo "$(BLUE)Building Fuseki image...$(NC)"
+	cd $(DOCKER_DIR) && docker-compose build fuseki
+	@echo "$(GREEN)✓ Fuseki image built$(NC)"
 
-api-build-minimal: ## Build minimal agents API Docker image (aggressive size reduction)
-	@echo "$(BLUE)Building minimal agents API image...$(NC)"
-	@echo "$(YELLOW)This will pre-download the embedding model and remove unused files$(NC)"
-	cd $(AGENTS_DIR) && docker build -f Dockerfile.minimal -t docker-agents-api:minimal .
-	@echo "$(GREEN)✓ Minimal API image built$(NC)"
-	@echo "$(BLUE)Comparing all image sizes:$(NC)"
-	@docker images | grep -E "REPOSITORY|docker-agents-api"
+build-ingestion: ## Build ingestion service image
+	@echo "$(BLUE)Building ingestion service image...$(NC)"
+	cd $(DOCKER_DIR) && docker-compose build ingestion-api
+	@echo "$(GREEN)✓ Ingestion service image built$(NC)"
 
-api-build-alpine: ## Build Alpine-based agents API Docker image (smallest base, may have compatibility issues)
-	@echo "$(BLUE)Building Alpine-based agents API image...$(NC)"
-	@echo "$(YELLOW)WARNING: Alpine uses musl libc - some packages may fail to build$(NC)"
-	@echo "$(YELLOW)This build may take 10-15 minutes due to compilation...$(NC)"
-	cd $(AGENTS_DIR) && docker build -f Dockerfile.alpine -t docker-agents-api:alpine .
-	@echo "$(GREEN)✓ Alpine API image built$(NC)"
-	@echo "$(BLUE)Comparing all image sizes:$(NC)"
-	@docker images | grep -E "REPOSITORY|docker-agents-api"
+build-retrieval: ## Build retrieval service image
+	@echo "$(BLUE)Building retrieval service image...$(NC)"
+	cd $(DOCKER_DIR) && docker-compose build retrieval-api
+	@echo "$(GREEN)✓ Retrieval service image built$(NC)"
 
-api-up: ## Start agents API service
-	@echo "$(BLUE)Starting agents API...$(NC)"
-	cd $(DOCKER_DIR) && docker-compose up -d agents-api
-	@echo "$(GREEN)✓ API started at http://localhost:8001$(NC)"
+build-gateway: ## Build API gateway image
+	@echo "$(BLUE)Building API gateway image...$(NC)"
+	cd $(DOCKER_DIR) && docker-compose build api-gateway
+	@echo "$(GREEN)✓ API gateway image built$(NC)"
 
-api-down: ## Stop agents API service
-	@echo "$(BLUE)Stopping agents API...$(NC)"
-	cd $(DOCKER_DIR) && docker-compose stop agents-api
-	@echo "$(GREEN)✓ API stopped$(NC)"
+build-microservices: ## Build all microservice images
+	@echo "$(BLUE)Building all microservice images...$(NC)"
+	cd $(DOCKER_DIR) && docker-compose build ingestion-api retrieval-api api-gateway
+	@echo "$(GREEN)✓ All microservice images built$(NC)"
 
-api-restart: api-down api-up ## Restart agents API service
+##@ Rebuild Commands (Stop, remove, build, and start)
 
-api-logs: ## View agents API logs
-	cd $(DOCKER_DIR) && docker-compose logs -f agents-api
+rebuild-all: services-down ## Rebuild and restart all services
+	@echo "$(BLUE)Rebuilding all services...$(NC)"
+	cd $(DOCKER_DIR) && docker-compose build fuseki ingestion-api retrieval-api api-gateway
+	@$(MAKE) services-up
+	@echo "$(GREEN)✓ All services rebuilt and started$(NC)"
 
-api-shell: ## Open shell in agents API container
-	cd $(DOCKER_DIR) && docker-compose exec agents-api /bin/bash
+rebuild-fuseki: ## Rebuild and restart Fuseki only
+	@echo "$(BLUE)Rebuilding Fuseki...$(NC)"
+	cd $(DOCKER_DIR) && docker-compose stop fuseki
+	cd $(DOCKER_DIR) && docker-compose rm -f fuseki
+	cd $(DOCKER_DIR) && docker-compose build fuseki
+	cd $(DOCKER_DIR) && docker-compose up -d fuseki
+	@echo "$(GREEN)✓ Fuseki rebuilt and started$(NC)"
 
-api-health: ## Check agents API health
-	@curl -f http://localhost:8001/health || echo "$(RED)API not healthy$(NC)"
+rebuild-ingestion: ## Rebuild and restart ingestion service
+	@echo "$(BLUE)Rebuilding ingestion service...$(NC)"
+	cd $(DOCKER_DIR) && docker-compose stop ingestion-api
+	cd $(DOCKER_DIR) && docker-compose rm -f ingestion-api
+	cd $(DOCKER_DIR) && docker-compose build ingestion-api
+	cd $(DOCKER_DIR) && docker-compose up -d ingestion-api
+	@echo "$(GREEN)✓ Ingestion service rebuilt and started at http://localhost:8001$(NC)"
 
-api-test: ## Run tests in API container
-	cd $(DOCKER_DIR) && docker-compose exec agents-api pytest tests/ -v
+rebuild-retrieval: ## Rebuild and restart retrieval service
+	@echo "$(BLUE)Rebuilding retrieval service...$(NC)"
+	cd $(DOCKER_DIR) && docker-compose stop retrieval-api
+	cd $(DOCKER_DIR) && docker-compose rm -f retrieval-api
+	cd $(DOCKER_DIR) && docker-compose build retrieval-api
+	cd $(DOCKER_DIR) && docker-compose up -d retrieval-api
+	@echo "$(GREEN)✓ Retrieval service rebuilt and started at http://localhost:8002$(NC)"
+
+rebuild-gateway: ## Rebuild and restart API gateway
+	@echo "$(BLUE)Rebuilding API gateway...$(NC)"
+	cd $(DOCKER_DIR) && docker-compose stop api-gateway
+	cd $(DOCKER_DIR) && docker-compose rm -f api-gateway
+	cd $(DOCKER_DIR) && docker-compose build api-gateway
+	cd $(DOCKER_DIR) && docker-compose up -d api-gateway
+	@echo "$(GREEN)✓ API gateway rebuilt and started at http://localhost:8080$(NC)"
+
+rebuild-microservices: ## Rebuild and restart all microservices
+	@echo "$(BLUE)Rebuilding all microservices...$(NC)"
+	cd $(DOCKER_DIR) && docker-compose stop ingestion-api retrieval-api api-gateway
+	cd $(DOCKER_DIR) && docker-compose rm -f ingestion-api retrieval-api api-gateway
+	cd $(DOCKER_DIR) && docker-compose build ingestion-api retrieval-api api-gateway
+	cd $(DOCKER_DIR) && docker-compose up -d ingestion-api retrieval-api api-gateway
+	@echo "$(GREEN)✓ All microservices rebuilt and started$(NC)"
+
+##@ Microservices Control
+
+# Start commands
+api-up: ## Start all microservices
+	@echo "$(BLUE)Starting all microservices...$(NC)"
+	cd $(DOCKER_DIR) && docker-compose up -d ingestion-api retrieval-api api-gateway
+	@echo "$(GREEN)✓ Microservices started:$(NC)"
+	@echo "  - Ingestion API: http://localhost:8001"
+	@echo "  - Retrieval API: http://localhost:8002"
+	@echo "  - API Gateway:   http://localhost:8080"
+
+api-up-ingestion: ## Start ingestion service only
+	@echo "$(BLUE)Starting ingestion service...$(NC)"
+	cd $(DOCKER_DIR) && docker-compose up -d ingestion-api
+	@echo "$(GREEN)✓ Ingestion service started at http://localhost:8001$(NC)"
+
+api-up-retrieval: ## Start retrieval service only
+	@echo "$(BLUE)Starting retrieval service...$(NC)"
+	cd $(DOCKER_DIR) && docker-compose up -d retrieval-api
+	@echo "$(GREEN)✓ Retrieval service started at http://localhost:8002$(NC)"
+
+api-up-gateway: ## Start API gateway only
+	@echo "$(BLUE)Starting API gateway...$(NC)"
+	cd $(DOCKER_DIR) && docker-compose up -d api-gateway
+	@echo "$(GREEN)✓ API gateway started at http://localhost:8080$(NC)"
+
+# Stop commands
+api-down: ## Stop all microservices
+	@echo "$(BLUE)Stopping all microservices...$(NC)"
+	cd $(DOCKER_DIR) && docker-compose stop ingestion-api retrieval-api api-gateway
+	@echo "$(GREEN)✓ All microservices stopped$(NC)"
+
+api-down-ingestion: ## Stop ingestion service only
+	@echo "$(BLUE)Stopping ingestion service...$(NC)"
+	cd $(DOCKER_DIR) && docker-compose stop ingestion-api
+	@echo "$(GREEN)✓ Ingestion service stopped$(NC)"
+
+api-down-retrieval: ## Stop retrieval service only
+	@echo "$(BLUE)Stopping retrieval service...$(NC)"
+	cd $(DOCKER_DIR) && docker-compose stop retrieval-api
+	@echo "$(GREEN)✓ Retrieval service stopped$(NC)"
+
+api-down-gateway: ## Stop API gateway only
+	@echo "$(BLUE)Stopping API gateway...$(NC)"
+	cd $(DOCKER_DIR) && docker-compose stop api-gateway
+	@echo "$(GREEN)✓ API gateway stopped$(NC)"
+
+# Restart commands (stop + start existing containers)
+api-restart: api-down api-up ## Restart all microservices
+
+api-restart-ingestion: ## Restart ingestion service only
+	@$(MAKE) api-down-ingestion
+	@$(MAKE) api-up-ingestion
+
+api-restart-retrieval: ## Restart retrieval service only
+	@$(MAKE) api-down-retrieval
+	@$(MAKE) api-up-retrieval
+
+api-restart-gateway: ## Restart API gateway only
+	@$(MAKE) api-down-gateway
+	@$(MAKE) api-up-gateway
+
+# Logs commands
+api-logs: ## View logs from all microservices
+	cd $(DOCKER_DIR) && docker-compose logs -f ingestion-api retrieval-api api-gateway
+
+api-logs-ingestion: ## View ingestion service logs
+	cd $(DOCKER_DIR) && docker-compose logs -f ingestion-api
+
+api-logs-retrieval: ## View retrieval service logs
+	cd $(DOCKER_DIR) && docker-compose logs -f retrieval-api
+
+api-logs-gateway: ## View API gateway logs
+	cd $(DOCKER_DIR) && docker-compose logs -f api-gateway
+
+# Shell commands
+api-shell-ingestion: ## Open shell in ingestion service container
+	cd $(DOCKER_DIR) && docker-compose exec ingestion-api /bin/bash
+
+api-shell-retrieval: ## Open shell in retrieval service container
+	cd $(DOCKER_DIR) && docker-compose exec retrieval-api /bin/bash
+
+# Health commands
+api-health: ## Check health of all microservices
+	@echo "$(BLUE)Checking microservice health...$(NC)"
+	@echo "Ingestion Service:"
+	@curl -f http://localhost:8001/health 2>/dev/null | python3 -m json.tool || echo "$(RED)  Ingestion service not healthy$(NC)"
+	@echo "\nRetrieval Service:"
+	@curl -f http://localhost:8002/health 2>/dev/null | python3 -m json.tool || echo "$(RED)  Retrieval service not healthy$(NC)"
+	@echo "\nAPI Gateway:"
+	@curl -f http://localhost:8080/health 2>/dev/null | python3 -m json.tool || echo "$(RED)  API gateway not healthy$(NC)"
+
+api-health-ingestion: ## Check ingestion service health
+	@curl -f http://localhost:8001/health | python3 -m json.tool || echo "$(RED)Ingestion service not healthy$(NC)"
+
+api-health-retrieval: ## Check retrieval service health
+	@curl -f http://localhost:8002/health | python3 -m json.tool || echo "$(RED)Retrieval service not healthy$(NC)"
+
+api-health-gateway: ## Check API gateway health
+	@curl -f http://localhost:8080/health | python3 -m json.tool || echo "$(RED)API gateway not healthy$(NC)"
 
 ##@ Data Management
 
@@ -175,7 +301,8 @@ data-migrate-milvus: ## Migrate Milvus schema
 
 ##@ Ingestion Pipeline
 
-ingest: ## Run enhanced ingestion pipeline with batch processing (usage: make ingest DIR=examples)
+# Direct Python script execution (legacy)
+ingest-script: ## Run ingestion using Python script directly (usage: make ingest-script DIR=examples)
 	@if [ -z "$(DIR)" ]; then \
 		echo "$(YELLOW)No directory specified, using default: examples$(NC)"; \
 		DIR="examples"; \
@@ -184,7 +311,7 @@ ingest: ## Run enhanced ingestion pipeline with batch processing (usage: make in
 	cd $(AGENTS_DIR) && $(PYTHONPATH) $(PYTHON) ../scripts/ingestion/run_enhanced_ingestion.py --directory ../$$DIR
 	@echo "$(GREEN)✓ Ingestion complete$(NC)"
 
-ingest-override: ## Force reprocess all documents (usage: make ingest-override DIR=examples)
+ingest-script-override: ## Force reprocess using script (usage: make ingest-script-override DIR=examples)
 	@if [ -z "$(DIR)" ]; then \
 		echo "$(YELLOW)No directory specified, using default: examples$(NC)"; \
 		DIR="examples"; \
@@ -193,7 +320,120 @@ ingest-override: ## Force reprocess all documents (usage: make ingest-override D
 	cd $(AGENTS_DIR) && $(PYTHONPATH) $(PYTHON) ../scripts/ingestion/run_enhanced_ingestion.py --directory ../$$DIR --override
 	@echo "$(GREEN)✓ Ingestion complete (with override)$(NC)"
 
+# API-based ingestion (recommended)
+ingest: ## Run ingestion via API gateway (usage: make ingest DIR=examples)
+	@if [ -z "$(DIR)" ]; then \
+		echo "$(YELLOW)No directory specified, using default: examples$(NC)"; \
+		DIR="examples"; \
+	fi; \
+	echo "$(BLUE)Running ingestion via API on $$DIR...$(NC)"; \
+	@echo "$(YELLOW)Calling ingestion API at http://localhost:8080/api/v1/ingest$(NC)"; \
+	curl -X POST http://localhost:8080/api/v1/ingest \
+		-H "Content-Type: application/json" \
+		-d "{\"directory\": \"$$DIR\", \"override\": false}" | python3 -m json.tool || echo "$(RED)Error: API not responding$(NC)"
+	@echo "$(GREEN)✓ Ingestion request submitted$(NC)"
+
+ingest-override: ## Force reprocess via API (usage: make ingest-override DIR=examples)
+	@if [ -z "$(DIR)" ]; then \
+		echo "$(YELLOW)No directory specified, using default: examples$(NC)"; \
+		DIR="examples"; \
+	fi; \
+	echo "$(BLUE)Running ingestion with override via API on $$DIR...$(NC)"; \
+	@echo "$(YELLOW)Calling ingestion API at http://localhost:8080/api/v1/ingest$(NC)"; \
+	curl -X POST http://localhost:8080/api/v1/ingest \
+		-H "Content-Type: application/json" \
+		-d "{\"directory\": \"$$DIR\", \"override\": true}" | python3 -m json.tool || echo "$(RED)Error: API not responding$(NC)"
+	@echo "$(GREEN)✓ Ingestion request submitted (with override)$(NC)"
+
+ingest-file: ## Ingest single file via API (usage: make ingest-file FILE=path/to/file.pdf)
+	@if [ -z "$(FILE)" ]; then \
+		echo "$(RED)Error: FILE parameter required$(NC)"; \
+		echo "Usage: make ingest-file FILE=examples/contract.pdf"; \
+		exit 1; \
+	fi
+	@echo "$(BLUE)Uploading file via API: $(FILE)$(NC)"; \
+	@echo "$(YELLOW)Calling ingestion API at http://localhost:8080/api/v1/ingest/upload$(NC)"; \
+	curl -X POST http://localhost:8080/api/v1/ingest/upload \
+		-F "file=@$(FILE)" | python3 -m json.tool || echo "$(RED)Error: API not responding$(NC)"
+	@echo "$(GREEN)✓ File upload complete$(NC)"
+
 ingest-test: ## Run full ingestion test
+
+# Async job-based ingestion (for interactive use, handles timeouts gracefully)
+ingest-async: ## Submit async ingestion job via API (usage: make ingest-async DIR=examples)
+	@if [ -z "$(DIR)" ]; then \
+		echo "$(YELLOW)No directory specified, using default: examples$(NC)"; \
+		DIR="examples"; \
+	fi; \
+	echo "$(BLUE)Submitting async ingestion job for $$DIR...$(NC)"; \
+	@echo "$(YELLOW)Calling async ingestion API at http://localhost:8080/api/v1/ingest/async$(NC)"; \
+	curl -X POST http://localhost:8080/api/v1/ingest/async \
+		-H "Content-Type: application/json" \
+		-d "{\"file_path\": \"$$DIR\", \"override\": false}" | python3 -m json.tool || echo "$(RED)Error: API not responding$(NC)"
+
+ingest-async-override: ## Submit async ingestion job with override (usage: make ingest-async-override DIR=examples)
+	@if [ -z "$(DIR)" ]; then \
+		echo "$(YELLOW)No directory specified, using default: examples$(NC)"; \
+		DIR="examples"; \
+	fi; \
+	echo "$(BLUE)Submitting async ingestion job with OVERRIDE for $$DIR...$(NC)"; \
+	@echo "$(YELLOW)Calling async ingestion API at http://localhost:8080/api/v1/ingest/async$(NC)"; \
+	curl -X POST http://localhost:8080/api/v1/ingest/async \
+		-H "Content-Type: application/json" \
+		-d "{\"file_path\": \"$$DIR\", \"override\": true}" | python3 -m json.tool || echo "$(RED)Error: API not responding$(NC)"
+	@echo "$(GREEN)✓ Async job submitted with override. Use 'make ingest-status JOB_ID=<id>' to check progress$(NC)"
+
+	@echo "$(GREEN)✓ Async job submitted. Use 'make ingest-status JOB_ID=<id>' to check progress$(NC)"
+
+ingest-status: ## Check status of async ingestion job (usage: make ingest-status JOB_ID=xxx)
+	@if [ -z "$(JOB_ID)" ]; then \
+		echo "$(RED)Error: JOB_ID parameter required$(NC)"; \
+		echo "Usage: make ingest-status JOB_ID=<job-id>"; \
+		exit 1; \
+	fi; \
+	echo "$(BLUE)Checking status of job $(JOB_ID)...$(NC)"; \
+	curl -f http://localhost:8080/api/v1/ingest/status/$(JOB_ID) 2>/dev/null | python3 -m json.tool || echo "$(RED)Error: Job not found or API not responding$(NC)"
+
+ingest-jobs: ## List all ingestion jobs
+	@echo "$(BLUE)Listing ingestion jobs...$(NC)"
+	curl -f http://localhost:8080/api/v1/ingest/jobs 2>/dev/null | python3 -m json.tool || echo "$(RED)Error: API not responding$(NC)"
+
+ingest-jobs-running: ## List running ingestion jobs
+	@echo "$(BLUE)Listing running ingestion jobs...$(NC)"
+	curl -f "http://localhost:8080/api/v1/ingest/jobs?status_filter=running" 2>/dev/null | python3 -m json.tool || echo "$(RED)Error: API not responding$(NC)"
+
+ingest-delete-job: ## Delete an ingestion job (usage: make ingest-delete-job JOB_ID=xxx)
+	@if [ -z "$(JOB_ID)" ]; then \
+		echo "$(RED)Error: JOB_ID parameter required$(NC)"; \
+		echo "Usage: make ingest-delete-job JOB_ID=<job-id>"; \
+		exit 1; \
+	fi; \
+	echo "$(BLUE)Deleting job $(JOB_ID)...$(NC)"; \
+	curl -X DELETE http://localhost:8080/api/v1/ingest/job/$(JOB_ID) 2>/dev/null | python3 -m json.tool || echo "$(RED)Error: Job not found or API not responding$(NC)"
+
+# Bulk processing (for millions of documents - bypasses API, no timeouts)
+ingest-bulk: ## Run bulk ingestion directly in container (usage: make ingest-bulk DIR=examples)
+	@if [ -z "$(DIR)" ]; then \
+		echo "$(YELLOW)No directory specified, using default: examples$(NC)"; \
+		DIR="examples"; \
+	fi; \
+	echo "$(BLUE)Running BULK ingestion on $$DIR (direct script, no API, no timeouts)...$(NC)"; \
+	echo "$(YELLOW)This bypasses the API and runs directly in the container$(NC)"; \
+	echo "$(YELLOW)Best for: Large batches (millions of documents)$(NC)"; \
+	docker exec -it contract-kg-ingestion-api \
+		python scripts/ingestion/run_enhanced_ingestion.py --directory /app/$$DIR
+	@echo "$(GREEN)✓ Bulk ingestion complete$(NC)"
+
+ingest-bulk-override: ## Force reprocess in bulk mode (usage: make ingest-bulk-override DIR=examples)
+	@if [ -z "$(DIR)" ]; then \
+		echo "$(YELLOW)No directory specified, using default: examples$(NC)"; \
+		DIR="examples"; \
+	fi; \
+	echo "$(BLUE)Running BULK ingestion with override on $$DIR...$(NC)"; \
+	docker exec -it contract-kg-ingestion-api \
+		python scripts/ingestion/run_enhanced_ingestion.py --directory /app/$$DIR --override
+	@echo "$(GREEN)✓ Bulk ingestion complete (with override)$(NC)"
+
 	@echo "$(BLUE)Running ingestion test...$(NC)"
 	cd $(AGENTS_DIR) && $(PYTHONPATH) $(PYTHON) tests/ingestion/test_full_ingestion.py
 
@@ -205,28 +445,57 @@ retrieval-test: ## Test retrieval pipeline
 
 ##@ Querying
 
-query-custom: ## Run custom SPARQL query (usage: make query-custom SPARQL="SELECT * WHERE { ?s ?p ?o } LIMIT 10")
+# Direct SPARQL query (bypasses API, for debugging)
+query-sparql: ## Run custom SPARQL query directly on Fuseki (usage: make query-sparql SPARQL="SELECT * WHERE { ?s ?p ?o } LIMIT 10")
 	@if [ -z "$(SPARQL)" ]; then \
 		echo "$(RED)Error: SPARQL parameter required$(NC)"; \
-		echo "Usage: make query-custom SPARQL=\"SELECT * WHERE { ?s ?p ?o } LIMIT 10\""; \
+		echo "Usage: make query-sparql SPARQL=\"SELECT * WHERE { ?s ?p ?o } LIMIT 10\""; \
 		exit 1; \
 	fi
+	@echo "$(BLUE)Running SPARQL query directly on Fuseki...$(NC)"
 	cd $(AGENTS_DIR) && $(PYTHONPATH) $(PYTHON) ../scripts/analysis/query_data.py --query "$(SPARQL)"
+
+# Natural language query via API (recommended)
+query: ## Ask natural language question via API (usage: make query Q="What are the termination clauses?")
+	@if [ -z "$(Q)" ]; then \
+		echo "$(RED)Error: Q parameter required$(NC)"; \
+		echo "Usage: make query Q=\"What are the termination clauses in the contracts?\""; \
+		exit 1; \
+	fi
+	@echo "$(BLUE)Querying API via gateway...$(NC)"
+	@echo "$(YELLOW)Question: $(Q)$(NC)"
+	@echo ""
+	@curl -s -X POST http://localhost:8080/api/v1/query \
+		-H "Content-Type: application/json" \
+		-d "{\"query\": \"$(Q)\", \"max_results\": 10}" | \
+		python3 -m json.tool || echo "$(RED)Error: API not responding or invalid response$(NC)"
+
 ##@ API Testing
 
-api-query: ## Query API directly (usage: make api-query Q="What are the termination clauses?")
+api-query: ## Query API via gateway (usage: make api-query Q="What are the termination clauses?")
 	@if [ -z "$(Q)" ]; then \
 		echo "$(RED)Error: Q parameter required$(NC)"; \
 		echo "Usage: make api-query Q=\"What are the termination clauses in the contracts?\""; \
 		exit 1; \
 	fi
-	@echo "$(BLUE)Querying API...$(NC)"
+	@echo "$(BLUE)Querying API via gateway...$(NC)"
 	@echo "$(YELLOW)Question: $(Q)$(NC)"
 	@echo ""
-	@curl -s -X POST http://localhost:8001/api/v1/query \
+	@curl -s -X POST http://localhost:8080/api/v1/query \
 		-H "Content-Type: application/json" \
-		-d "{\"query\": \"$(Q)\", \"max_results\": 10, \"include_reasoning\": true}" | \
+		-d "{\"query\": \"$(Q)\", \"max_results\": 10}" | \
 		python3 -m json.tool || echo "$(RED)Error: API not responding or invalid response$(NC)"
+
+api-query-direct: ## Query retrieval service directly (usage: make api-query-direct Q="...")
+	@if [ -z "$(Q)" ]; then \
+		echo "$(RED)Error: Q parameter required$(NC)"; \
+		exit 1; \
+	fi
+	@echo "$(BLUE)Querying retrieval service directly...$(NC)"
+	@curl -s -X POST http://localhost:8002/api/v1/query \
+		-H "Content-Type: application/json" \
+		-d "{\"query\": \"$(Q)\", \"max_results\": 10}" | \
+		python3 -m json.tool || echo "$(RED)Error: Retrieval service not responding$(NC)"
 
 api-test-simple: ## Test API with simple test cases
 	@echo "$(BLUE)Testing API with simple test cases...$(NC)"
@@ -484,15 +753,19 @@ clean-all: clean clean-logs clean-cache ## Clean everything (files, logs, and ca
 
 urls: ## Display service URLs
 	@echo "$(BLUE)Service URLs:$(NC)"
-	@echo "  $(GREEN)API:$(NC)         http://localhost:8001"
-	@echo "  $(GREEN)API Docs:$(NC)    http://localhost:8001/docs"
-	@echo "  $(GREEN)Fuseki:$(NC)      http://localhost:3030 (admin/admin123)"
-	@echo "  $(GREEN)Milvus:$(NC)      http://localhost:19530"
-	@echo "  $(GREEN)Attu (UI):$(NC)   http://localhost:8080"
-	@echo "  $(GREEN)MinIO:$(NC)       http://localhost:9001"
-	@echo "  $(GREEN)Ollama:$(NC)      http://localhost:11434"
-	@echo "  $(GREEN)Phoenix:$(NC)     http://localhost:6006"
-	@echo "  $(GREEN)Docs:$(NC)        http://localhost:8000"
+	@echo "  $(GREEN)API Gateway:$(NC)      http://localhost:8080 (unified interface)"
+	@echo "  $(GREEN)Gateway Docs:$(NC)     http://localhost:8080/docs"
+	@echo "  $(GREEN)Ingestion API:$(NC)    http://localhost:8001"
+	@echo "  $(GREEN)Ingestion Docs:$(NC)   http://localhost:8001/docs"
+	@echo "  $(GREEN)Retrieval API:$(NC)    http://localhost:8002"
+	@echo "  $(GREEN)Retrieval Docs:$(NC)   http://localhost:8002/docs"
+	@echo "  $(GREEN)Fuseki:$(NC)           http://localhost:3030 (admin/admin123)"
+	@echo "  $(GREEN)Milvus:$(NC)           http://localhost:19530"
+	@echo "  $(GREEN)Attu (UI):$(NC)        http://localhost:8081 (with --profile with-ui)"
+	@echo "  $(GREEN)MinIO:$(NC)            http://localhost:9001"
+	@echo "  $(GREEN)Ollama:$(NC)           http://localhost:11434"
+	@echo "  $(GREEN)Phoenix:$(NC)          http://localhost:6006"
+	@echo "  $(GREEN)Docs:$(NC)             http://localhost:8000"
 
 check-deps: ## Check if required tools are installed
 	@echo "$(BLUE)Checking dependencies...$(NC)"

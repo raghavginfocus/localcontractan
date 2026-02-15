@@ -44,6 +44,7 @@ COPY --from=builder /app/.venv /app/.venv
 
 # Copy application code
 COPY --chown=appuser:appuser src/ ./src/
+COPY --chown=appuser:appuser pyproject.toml README.md ./
 
 # Create directories for logs (with subdirectories), checkpoints, and data
 RUN mkdir -p /app/logs/retrieval /app/logs/ingestion /app/checkpoints /app/data && \
