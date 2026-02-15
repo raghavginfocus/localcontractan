@@ -370,6 +370,19 @@ ingest-async: ## Submit async ingestion job via API (usage: make ingest-async DI
 	curl -X POST http://localhost:8080/api/v1/ingest/async \
 		-H "Content-Type: application/json" \
 		-d "{\"file_path\": \"$$DIR\", \"override\": false}" | python3 -m json.tool || echo "$(RED)Error: API not responding$(NC)"
+
+ingest-async-override: ## Submit async ingestion job with override (usage: make ingest-async-override DIR=examples)
+	@if [ -z "$(DIR)" ]; then \
+		echo "$(YELLOW)No directory specified, using default: examples$(NC)"; \
+		DIR="examples"; \
+	fi; \
+	echo "$(BLUE)Submitting async ingestion job with OVERRIDE for $$DIR...$(NC)"; \
+	@echo "$(YELLOW)Calling async ingestion API at http://localhost:8080/api/v1/ingest/async$(NC)"; \
+	curl -X POST http://localhost:8080/api/v1/ingest/async \
+		-H "Content-Type: application/json" \
+		-d "{\"file_path\": \"$$DIR\", \"override\": true}" | python3 -m json.tool || echo "$(RED)Error: API not responding$(NC)"
+	@echo "$(GREEN)✓ Async job submitted with override. Use 'make ingest-status JOB_ID=<id>' to check progress$(NC)"
+
 	@echo "$(GREEN)✓ Async job submitted. Use 'make ingest-status JOB_ID=<id>' to check progress$(NC)"
 
 ingest-status: ## Check status of async ingestion job (usage: make ingest-status JOB_ID=xxx)
