@@ -387,8 +387,12 @@ async def run_ingestion_job(job_id: str, file_path: str, override: bool = False)
     """
     Background task to run ingestion job.
     
+    Supports both single files and directories.
     Updates job status and progress in database.
     """
+    import os
+    from pathlib import Path
+    
     orchestrator = app_state.get("ingestion_orchestrator")
     
     if not orchestrator:
@@ -400,11 +404,50 @@ async def run_ingestion_job(job_id: str, file_path: str, override: bool = False)
         job_manager.update_status(job_id, JobStatus.RUNNING)
         logger.info(f"Starting ingestion job {job_id}: {file_path}")
         
-        # Run ingestion
-        result = await orchestrator.ingest(
-            file_path=file_path,
-            override=override
-        )
+        path = Path(file_path)
+        
+        # Check if path is a directory or file
+        if path.is_dir():
+            # Directory: scan and process all files
+            logger.info(f"Processing directory: {file_path}")
+            
+            # Scan directory for documents
+            from agents.ingestion.directory_scanner import DirectoryScanner
+            scanner = DirectoryScanner()
+            files = await scanner.scan_directory(str(path))
+            
+            if not files:
+                job_manager.mark_completed(job_id, {
+                    "status": "success",
+                    "message": "No files found in directory",
+                    "files_processed": 0
+                })
+                return
+            
+            # Process files in batch
+            items = [{"file_path": f} for f in files]
+            results = await orchestrator.ingest_batch(items, max_concurrent=5)
+            
+            # Aggregate results
+            successful = sum(1 for r in results if r.get("status") == "success")
+            failed = len(results) - successful
+            
+            result = {
+                "status": "success",
+                "message": f"Processed {len(results)} files",
+                "files_processed": len(results),
+                "successful": successful,
+                "failed": failed,
+                "results": results
+            }
+            
+        else:
+            # Single file
+            logger.info(f"Processing single file: {file_path}")
+            result = await orchestrator.ingest(
+                file_path=file_path,
+                override=override
+            )
         
         # Mark as completed
         job_manager.mark_completed(job_id, result)
