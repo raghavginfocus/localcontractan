@@ -86,60 +86,98 @@ health: ## Check health of all services
 	@echo "$(BLUE)Checking service health...$(NC)"
 	cd $(AGENTS_DIR) && $(PYTHONPATH) $(PYTHON) ../scripts/utilities/health_check.py
 
-##@ Agents API (Docker)
+##@ Microservices (Docker)
 
-api-build: ## Build agents API Docker image
-	@echo "$(BLUE)Building agents API image...$(NC)"
-	cd $(DOCKER_DIR) && docker-compose build agents-api
-	@echo "$(GREEN)✓ API image built$(NC)"
+# Build commands
+api-build: ## Build all microservice images
+	@echo "$(BLUE)Building microservice images...$(NC)"
+	cd $(DOCKER_DIR) && docker-compose build ingestion-api retrieval-api api-gateway
+	@echo "$(GREEN)✓ All microservice images built$(NC)"
 
-api-build-optimized: ## Build optimized agents API Docker image (smaller size)
-	@echo "$(BLUE)Building optimized agents API image...$(NC)"
-	cd $(AGENTS_DIR) && docker build -f Dockerfile.optimized -t docker-agents-api:optimized .
-	@echo "$(GREEN)✓ Optimized API image built$(NC)"
-	@echo "$(BLUE)Comparing image sizes:$(NC)"
-	@docker images | grep -E "REPOSITORY|docker-agents-api"
+api-build-ingestion: ## Build ingestion service image
+	@echo "$(BLUE)Building ingestion service image...$(NC)"
+	cd $(DOCKER_DIR) && docker-compose build ingestion-api
+	@echo "$(GREEN)✓ Ingestion service image built$(NC)"
 
-api-build-minimal: ## Build minimal agents API Docker image (aggressive size reduction)
-	@echo "$(BLUE)Building minimal agents API image...$(NC)"
-	@echo "$(YELLOW)This will pre-download the embedding model and remove unused files$(NC)"
-	cd $(AGENTS_DIR) && docker build -f Dockerfile.minimal -t docker-agents-api:minimal .
-	@echo "$(GREEN)✓ Minimal API image built$(NC)"
-	@echo "$(BLUE)Comparing all image sizes:$(NC)"
-	@docker images | grep -E "REPOSITORY|docker-agents-api"
+api-build-retrieval: ## Build retrieval service image
+	@echo "$(BLUE)Building retrieval service image...$(NC)"
+	cd $(DOCKER_DIR) && docker-compose build retrieval-api
+	@echo "$(GREEN)✓ Retrieval service image built$(NC)"
 
-api-build-alpine: ## Build Alpine-based agents API Docker image (smallest base, may have compatibility issues)
-	@echo "$(BLUE)Building Alpine-based agents API image...$(NC)"
-	@echo "$(YELLOW)WARNING: Alpine uses musl libc - some packages may fail to build$(NC)"
-	@echo "$(YELLOW)This build may take 10-15 minutes due to compilation...$(NC)"
-	cd $(AGENTS_DIR) && docker build -f Dockerfile.alpine -t docker-agents-api:alpine .
-	@echo "$(GREEN)✓ Alpine API image built$(NC)"
-	@echo "$(BLUE)Comparing all image sizes:$(NC)"
-	@docker images | grep -E "REPOSITORY|docker-agents-api"
+api-build-gateway: ## Build API gateway image
+	@echo "$(BLUE)Building API gateway image...$(NC)"
+	cd $(DOCKER_DIR) && docker-compose build api-gateway
+	@echo "$(GREEN)✓ API gateway image built$(NC)"
 
-api-up: ## Start agents API service
-	@echo "$(BLUE)Starting agents API...$(NC)"
-	cd $(DOCKER_DIR) && docker-compose up -d agents-api
-	@echo "$(GREEN)✓ API started at http://localhost:8001$(NC)"
+# Start/Stop commands
+api-up: ## Start all microservices
+	@echo "$(BLUE)Starting all microservices...$(NC)"
+	cd $(DOCKER_DIR) && docker-compose up -d ingestion-api retrieval-api api-gateway
+	@echo "$(GREEN)✓ Microservices started:$(NC)"
+	@echo "  - Ingestion API: http://localhost:8001"
+	@echo "  - Retrieval API: http://localhost:8002"
+	@echo "  - API Gateway:   http://localhost:8080"
 
-api-down: ## Stop agents API service
-	@echo "$(BLUE)Stopping agents API...$(NC)"
-	cd $(DOCKER_DIR) && docker-compose stop agents-api
-	@echo "$(GREEN)✓ API stopped$(NC)"
+api-up-ingestion: ## Start ingestion service only
+	@echo "$(BLUE)Starting ingestion service...$(NC)"
+	cd $(DOCKER_DIR) && docker-compose up -d ingestion-api
+	@echo "$(GREEN)✓ Ingestion service started at http://localhost:8001$(NC)"
 
-api-restart: api-down api-up ## Restart agents API service
+api-up-retrieval: ## Start retrieval service only
+	@echo "$(BLUE)Starting retrieval service...$(NC)"
+	cd $(DOCKER_DIR) && docker-compose up -d retrieval-api
+	@echo "$(GREEN)✓ Retrieval service started at http://localhost:8002$(NC)"
 
-api-logs: ## View agents API logs
-	cd $(DOCKER_DIR) && docker-compose logs -f agents-api
+api-up-gateway: ## Start API gateway only
+	@echo "$(BLUE)Starting API gateway...$(NC)"
+	cd $(DOCKER_DIR) && docker-compose up -d api-gateway
+	@echo "$(GREEN)✓ API gateway started at http://localhost:8080$(NC)"
 
-api-shell: ## Open shell in agents API container
-	cd $(DOCKER_DIR) && docker-compose exec agents-api /bin/bash
+api-down: ## Stop all microservices
+	@echo "$(BLUE)Stopping all microservices...$(NC)"
+	cd $(DOCKER_DIR) && docker-compose stop ingestion-api retrieval-api api-gateway
+	@echo "$(GREEN)✓ All microservices stopped$(NC)"
 
-api-health: ## Check agents API health
-	@curl -f http://localhost:8001/health || echo "$(RED)API not healthy$(NC)"
+api-restart: api-down api-up ## Restart all microservices
 
-api-test: ## Run tests in API container
-	cd $(DOCKER_DIR) && docker-compose exec agents-api pytest tests/ -v
+# Logs commands
+api-logs: ## View logs from all microservices
+	cd $(DOCKER_DIR) && docker-compose logs -f ingestion-api retrieval-api api-gateway
+
+api-logs-ingestion: ## View ingestion service logs
+	cd $(DOCKER_DIR) && docker-compose logs -f ingestion-api
+
+api-logs-retrieval: ## View retrieval service logs
+	cd $(DOCKER_DIR) && docker-compose logs -f retrieval-api
+
+api-logs-gateway: ## View API gateway logs
+	cd $(DOCKER_DIR) && docker-compose logs -f api-gateway
+
+# Shell commands
+api-shell-ingestion: ## Open shell in ingestion service container
+	cd $(DOCKER_DIR) && docker-compose exec ingestion-api /bin/bash
+
+api-shell-retrieval: ## Open shell in retrieval service container
+	cd $(DOCKER_DIR) && docker-compose exec retrieval-api /bin/bash
+
+# Health commands
+api-health: ## Check health of all microservices
+	@echo "$(BLUE)Checking microservice health...$(NC)"
+	@echo "Ingestion Service:"
+	@curl -f http://localhost:8001/health 2>/dev/null | python3 -m json.tool || echo "$(RED)  Ingestion service not healthy$(NC)"
+	@echo "\nRetrieval Service:"
+	@curl -f http://localhost:8002/health 2>/dev/null | python3 -m json.tool || echo "$(RED)  Retrieval service not healthy$(NC)"
+	@echo "\nAPI Gateway:"
+	@curl -f http://localhost:8080/health 2>/dev/null | python3 -m json.tool || echo "$(RED)  API gateway not healthy$(NC)"
+
+api-health-ingestion: ## Check ingestion service health
+	@curl -f http://localhost:8001/health | python3 -m json.tool || echo "$(RED)Ingestion service not healthy$(NC)"
+
+api-health-retrieval: ## Check retrieval service health
+	@curl -f http://localhost:8002/health | python3 -m json.tool || echo "$(RED)Retrieval service not healthy$(NC)"
+
+api-health-gateway: ## Check API gateway health
+	@curl -f http://localhost:8080/health | python3 -m json.tool || echo "$(RED)API gateway not healthy$(NC)"
 
 ##@ Data Management
 
@@ -214,19 +252,30 @@ query-custom: ## Run custom SPARQL query (usage: make query-custom SPARQL="SELEC
 	cd $(AGENTS_DIR) && $(PYTHONPATH) $(PYTHON) ../scripts/analysis/query_data.py --query "$(SPARQL)"
 ##@ API Testing
 
-api-query: ## Query API directly (usage: make api-query Q="What are the termination clauses?")
+api-query: ## Query API via gateway (usage: make api-query Q="What are the termination clauses?")
 	@if [ -z "$(Q)" ]; then \
 		echo "$(RED)Error: Q parameter required$(NC)"; \
 		echo "Usage: make api-query Q=\"What are the termination clauses in the contracts?\""; \
 		exit 1; \
 	fi
-	@echo "$(BLUE)Querying API...$(NC)"
+	@echo "$(BLUE)Querying API via gateway...$(NC)"
 	@echo "$(YELLOW)Question: $(Q)$(NC)"
 	@echo ""
-	@curl -s -X POST http://localhost:8001/api/v1/query \
+	@curl -s -X POST http://localhost:8080/api/v1/query \
 		-H "Content-Type: application/json" \
 		-d "{\"query\": \"$(Q)\", \"max_results\": 10, \"include_reasoning\": true}" | \
 		python3 -m json.tool || echo "$(RED)Error: API not responding or invalid response$(NC)"
+
+api-query-direct: ## Query retrieval service directly (usage: make api-query-direct Q="...")
+	@if [ -z "$(Q)" ]; then \
+		echo "$(RED)Error: Q parameter required$(NC)"; \
+		exit 1; \
+	fi
+	@echo "$(BLUE)Querying retrieval service directly...$(NC)"
+	@curl -s -X POST http://localhost:8002/api/v1/query \
+		-H "Content-Type: application/json" \
+		-d "{\"query\": \"$(Q)\", \"max_results\": 10, \"include_reasoning\": true}" | \
+		python3 -m json.tool || echo "$(RED)Error: Retrieval service not responding$(NC)"
 
 api-test-simple: ## Test API with simple test cases
 	@echo "$(BLUE)Testing API with simple test cases...$(NC)"
