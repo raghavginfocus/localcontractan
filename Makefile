@@ -86,57 +86,89 @@ health: ## Check health of all services
 	@echo "$(BLUE)Checking service health...$(NC)"
 	cd $(AGENTS_DIR) && $(PYTHONPATH) $(PYTHON) ../scripts/utilities/health_check.py
 
-##@ Microservices (Docker)
+##@ Build Commands (Build images without starting)
 
-# Complete rebuild commands
-rebuild-all: ## Clean rebuild all containers (Fuseki + Microservices)
-	@echo "$(BLUE)Cleaning and rebuilding all containers...$(NC)"
-	@echo "$(YELLOW)Step 1: Stopping all services...$(NC)"
-	cd $(DOCKER_DIR) && docker-compose down
-	@echo "$(YELLOW)Step 2: Removing old images...$(NC)"
-	cd $(DOCKER_DIR) && docker-compose rm -f
-	@echo "$(YELLOW)Step 3: Building Fuseki with automatic initialization...$(NC)"
+build-all: ## Build all images (Fuseki + Microservices)
+	@echo "$(BLUE)Building all images...$(NC)"
+	cd $(DOCKER_DIR) && docker-compose build fuseki ingestion-api retrieval-api api-gateway
+	@echo "$(GREEN)✓ All images built$(NC)"
+
+build-fuseki: ## Build Fuseki image only
+	@echo "$(BLUE)Building Fuseki image...$(NC)"
 	cd $(DOCKER_DIR) && docker-compose build fuseki
-	@echo "$(YELLOW)Step 4: Building all microservices...$(NC)"
-	cd $(DOCKER_DIR) && docker-compose build ingestion-api retrieval-api api-gateway
-	@echo "$(GREEN)✓ All containers rebuilt successfully$(NC)"
+	@echo "$(GREEN)✓ Fuseki image built$(NC)"
 
-rebuild-fuseki: ## Rebuild Fuseki container only
-	@echo "$(BLUE)Rebuilding Fuseki container...$(NC)"
-	cd $(DOCKER_DIR) && docker-compose stop fuseki
-	cd $(DOCKER_DIR) && docker-compose rm -f fuseki
-	cd $(DOCKER_DIR) && docker-compose build fuseki
-	@echo "$(GREEN)✓ Fuseki container rebuilt$(NC)"
-
-rebuild-microservices: ## Rebuild all microservice containers
-	@echo "$(BLUE)Rebuilding microservice containers...$(NC)"
-	cd $(DOCKER_DIR) && docker-compose stop ingestion-api retrieval-api api-gateway
-	cd $(DOCKER_DIR) && docker-compose rm -f ingestion-api retrieval-api api-gateway
-	cd $(DOCKER_DIR) && docker-compose build ingestion-api retrieval-api api-gateway
-	@echo "$(GREEN)✓ All microservice containers rebuilt$(NC)"
-
-# Build commands
-api-build: ## Build all microservice images
-	@echo "$(BLUE)Building microservice images...$(NC)"
-	cd $(DOCKER_DIR) && docker-compose build ingestion-api retrieval-api api-gateway
-	@echo "$(GREEN)✓ All microservice images built$(NC)"
-
-api-build-ingestion: ## Build ingestion service image
+build-ingestion: ## Build ingestion service image
 	@echo "$(BLUE)Building ingestion service image...$(NC)"
 	cd $(DOCKER_DIR) && docker-compose build ingestion-api
 	@echo "$(GREEN)✓ Ingestion service image built$(NC)"
 
-api-build-retrieval: ## Build retrieval service image
+build-retrieval: ## Build retrieval service image
 	@echo "$(BLUE)Building retrieval service image...$(NC)"
 	cd $(DOCKER_DIR) && docker-compose build retrieval-api
 	@echo "$(GREEN)✓ Retrieval service image built$(NC)"
 
-api-build-gateway: ## Build API gateway image
+build-gateway: ## Build API gateway image
 	@echo "$(BLUE)Building API gateway image...$(NC)"
 	cd $(DOCKER_DIR) && docker-compose build api-gateway
 	@echo "$(GREEN)✓ API gateway image built$(NC)"
 
-# Start/Stop commands
+build-microservices: ## Build all microservice images
+	@echo "$(BLUE)Building all microservice images...$(NC)"
+	cd $(DOCKER_DIR) && docker-compose build ingestion-api retrieval-api api-gateway
+	@echo "$(GREEN)✓ All microservice images built$(NC)"
+
+##@ Rebuild Commands (Stop, remove, build, and start)
+
+rebuild-all: services-down ## Rebuild and restart all services
+	@echo "$(BLUE)Rebuilding all services...$(NC)"
+	cd $(DOCKER_DIR) && docker-compose build fuseki ingestion-api retrieval-api api-gateway
+	@$(MAKE) services-up
+	@echo "$(GREEN)✓ All services rebuilt and started$(NC)"
+
+rebuild-fuseki: ## Rebuild and restart Fuseki only
+	@echo "$(BLUE)Rebuilding Fuseki...$(NC)"
+	cd $(DOCKER_DIR) && docker-compose stop fuseki
+	cd $(DOCKER_DIR) && docker-compose rm -f fuseki
+	cd $(DOCKER_DIR) && docker-compose build fuseki
+	cd $(DOCKER_DIR) && docker-compose up -d fuseki
+	@echo "$(GREEN)✓ Fuseki rebuilt and started$(NC)"
+
+rebuild-ingestion: ## Rebuild and restart ingestion service
+	@echo "$(BLUE)Rebuilding ingestion service...$(NC)"
+	cd $(DOCKER_DIR) && docker-compose stop ingestion-api
+	cd $(DOCKER_DIR) && docker-compose rm -f ingestion-api
+	cd $(DOCKER_DIR) && docker-compose build ingestion-api
+	cd $(DOCKER_DIR) && docker-compose up -d ingestion-api
+	@echo "$(GREEN)✓ Ingestion service rebuilt and started at http://localhost:8001$(NC)"
+
+rebuild-retrieval: ## Rebuild and restart retrieval service
+	@echo "$(BLUE)Rebuilding retrieval service...$(NC)"
+	cd $(DOCKER_DIR) && docker-compose stop retrieval-api
+	cd $(DOCKER_DIR) && docker-compose rm -f retrieval-api
+	cd $(DOCKER_DIR) && docker-compose build retrieval-api
+	cd $(DOCKER_DIR) && docker-compose up -d retrieval-api
+	@echo "$(GREEN)✓ Retrieval service rebuilt and started at http://localhost:8002$(NC)"
+
+rebuild-gateway: ## Rebuild and restart API gateway
+	@echo "$(BLUE)Rebuilding API gateway...$(NC)"
+	cd $(DOCKER_DIR) && docker-compose stop api-gateway
+	cd $(DOCKER_DIR) && docker-compose rm -f api-gateway
+	cd $(DOCKER_DIR) && docker-compose build api-gateway
+	cd $(DOCKER_DIR) && docker-compose up -d api-gateway
+	@echo "$(GREEN)✓ API gateway rebuilt and started at http://localhost:8080$(NC)"
+
+rebuild-microservices: ## Rebuild and restart all microservices
+	@echo "$(BLUE)Rebuilding all microservices...$(NC)"
+	cd $(DOCKER_DIR) && docker-compose stop ingestion-api retrieval-api api-gateway
+	cd $(DOCKER_DIR) && docker-compose rm -f ingestion-api retrieval-api api-gateway
+	cd $(DOCKER_DIR) && docker-compose build ingestion-api retrieval-api api-gateway
+	cd $(DOCKER_DIR) && docker-compose up -d ingestion-api retrieval-api api-gateway
+	@echo "$(GREEN)✓ All microservices rebuilt and started$(NC)"
+
+##@ Microservices Control
+
+# Start commands
 api-up: ## Start all microservices
 	@echo "$(BLUE)Starting all microservices...$(NC)"
 	cd $(DOCKER_DIR) && docker-compose up -d ingestion-api retrieval-api api-gateway
@@ -160,12 +192,41 @@ api-up-gateway: ## Start API gateway only
 	cd $(DOCKER_DIR) && docker-compose up -d api-gateway
 	@echo "$(GREEN)✓ API gateway started at http://localhost:8080$(NC)"
 
+# Stop commands
 api-down: ## Stop all microservices
 	@echo "$(BLUE)Stopping all microservices...$(NC)"
 	cd $(DOCKER_DIR) && docker-compose stop ingestion-api retrieval-api api-gateway
 	@echo "$(GREEN)✓ All microservices stopped$(NC)"
 
+api-down-ingestion: ## Stop ingestion service only
+	@echo "$(BLUE)Stopping ingestion service...$(NC)"
+	cd $(DOCKER_DIR) && docker-compose stop ingestion-api
+	@echo "$(GREEN)✓ Ingestion service stopped$(NC)"
+
+api-down-retrieval: ## Stop retrieval service only
+	@echo "$(BLUE)Stopping retrieval service...$(NC)"
+	cd $(DOCKER_DIR) && docker-compose stop retrieval-api
+	@echo "$(GREEN)✓ Retrieval service stopped$(NC)"
+
+api-down-gateway: ## Stop API gateway only
+	@echo "$(BLUE)Stopping API gateway...$(NC)"
+	cd $(DOCKER_DIR) && docker-compose stop api-gateway
+	@echo "$(GREEN)✓ API gateway stopped$(NC)"
+
+# Restart commands (stop + start existing containers)
 api-restart: api-down api-up ## Restart all microservices
+
+api-restart-ingestion: ## Restart ingestion service only
+	@$(MAKE) api-down-ingestion
+	@$(MAKE) api-up-ingestion
+
+api-restart-retrieval: ## Restart retrieval service only
+	@$(MAKE) api-down-retrieval
+	@$(MAKE) api-up-retrieval
+
+api-restart-gateway: ## Restart API gateway only
+	@$(MAKE) api-down-gateway
+	@$(MAKE) api-up-gateway
 
 # Logs commands
 api-logs: ## View logs from all microservices
