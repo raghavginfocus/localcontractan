@@ -265,3 +265,40 @@ class FusekiStore(SPARQLStore):
         except Exception as e:
             logger.error("Failed to load RDF data", error=str(e), format=format)
             raise
+
+    def get_triple_count(self, graph_uri: str | None = None) -> int:
+        """
+        Get the total number of triples in a graph.
+        
+        Args:
+            graph_uri: Optional named graph URI. If None, counts all named graphs.
+            
+        Returns:
+            Number of triples
+        """
+        if graph_uri:
+            # Count triples in specific named graph
+            query = f"""
+                SELECT (COUNT(*) as ?count)
+                WHERE {{
+                    GRAPH <{graph_uri}> {{
+                        ?s ?p ?o
+                    }}
+                }}
+            """
+        else:
+            # Count triples across ALL named graphs (not default graph)
+            query = """
+                SELECT (COUNT(*) as ?count)
+                WHERE {
+                    GRAPH ?g {
+                        ?s ?p ?o
+                    }
+                }
+            """
+        
+        results = self.execute_select(query, add_prefixes=False)
+        count = int(results[0]["count"]) if results else 0
+        
+        logger.debug("Triple count retrieved", graph_uri=graph_uri, count=count)
+        return count
