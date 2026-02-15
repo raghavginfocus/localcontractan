@@ -20,6 +20,8 @@ import tempfile
 from fastapi import FastAPI, File, HTTPException, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi import BackgroundTasks
+from api.job_manager import IngestionJobManager, JobStatus, JobInfo
 from pydantic import BaseModel, Field
 
 from config import get_settings
@@ -59,6 +61,10 @@ app_state = {
     "ingestion_orchestrator": None,
     "phoenix_tracer": None,
 }
+
+
+# Initialize job manager
+job_manager = IngestionJobManager()
 
 
 @asynccontextmanager
@@ -260,6 +266,155 @@ async def upload_and_ingest(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Upload and ingestion failed: {str(e)}"
         )
+
+
+# ============================================================================
+# ASYNC JOB ENDPOINTS
+# ============================================================================
+
+@app.post("/api/v1/ingest/async")
+async def ingest_async(
+    request: IngestionRequest,
+    background_tasks: BackgroundTasks
+):
+    """
+    Submit an ingestion job asynchronously.
+    
+    Returns immediately with a job_id. Use /api/v1/ingest/status/{job_id}
+    to check progress.
+    
+    Best for: Large batches, long-running ingestion tasks
+    """
+    try:
+        # Create job
+        job_id = job_manager.create_job(request.dict())
+        
+        # Add background task
+        background_tasks.add_task(
+            run_ingestion_job,
+            job_id=job_id,
+            file_path=request.file_path,
+            override=request.override
+        )
+        
+        logger.info(f"Created async ingestion job: {job_id}")
+        
+        return {
+            "job_id": job_id,
+            "status": "pending",
+            "message": "Ingestion job submitted successfully",
+            "check_status": f"/api/v1/ingest/status/{job_id}"
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to create async job: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to create job: {str(e)}"
+        )
+
+
+@app.get("/api/v1/ingest/status/{job_id}")
+async def get_job_status(job_id: str):
+    """Get status of an ingestion job."""
+    job = job_manager.get_job(job_id)
+    
+    if not job:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Job not found: {job_id}"
+        )
+    
+    return {
+        "job_id": job.job_id,
+        "status": job.status.value,
+        "progress": job.progress,
+        "created_at": job.created_at.isoformat(),
+        "started_at": job.started_at.isoformat() if job.started_at else None,
+        "completed_at": job.completed_at.isoformat() if job.completed_at else None,
+        "result": job.result,
+        "error": job.error
+    }
+
+
+@app.get("/api/v1/ingest/jobs")
+async def list_jobs(limit: int = 100, status_filter: str | None = None):
+    """List ingestion jobs."""
+    from api.job_manager import JobStatus
+    
+    status_enum = None
+    if status_filter:
+        try:
+            status_enum = JobStatus(status_filter)
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid status: {status_filter}"
+            )
+    
+    jobs = job_manager.list_jobs(limit=limit, status=status_enum)
+    
+    return {
+        "total": len(jobs),
+        "jobs": [
+            {
+                "job_id": job.job_id,
+                "status": job.status.value,
+                "progress": job.progress,
+                "created_at": job.created_at.isoformat(),
+                "input_data": job.input_data
+            }
+            for job in jobs
+        ]
+    }
+
+
+@app.delete("/api/v1/ingest/job/{job_id}")
+async def delete_job(job_id: str):
+    """Delete an ingestion job."""
+    deleted = job_manager.delete_job(job_id)
+    
+    if not deleted:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Job not found: {job_id}"
+        )
+    
+    return {"message": f"Job {job_id} deleted successfully"}
+
+
+async def run_ingestion_job(job_id: str, file_path: str, override: bool = False):
+    """
+    Background task to run ingestion job.
+    
+    Updates job status and progress in database.
+    """
+    orchestrator = app_state.get("ingestion_orchestrator")
+    
+    if not orchestrator:
+        job_manager.mark_failed(job_id, "Ingestion orchestrator not initialized")
+        return
+    
+    try:
+        # Mark as running
+        job_manager.update_status(job_id, JobStatus.RUNNING)
+        logger.info(f"Starting ingestion job {job_id}: {file_path}")
+        
+        # Run ingestion
+        result = await orchestrator.ingest_document(
+            file_path=file_path,
+            override=override
+        )
+        
+        # Mark as completed
+        job_manager.mark_completed(job_id, result)
+        logger.info(f"Completed ingestion job {job_id}")
+        
+    except Exception as e:
+        # Mark as failed
+        error_msg = str(e)
+        job_manager.mark_failed(job_id, error_msg)
+        logger.error(f"Failed ingestion job {job_id}: {error_msg}")
 
 
 @app.get("/api/v1/metrics")

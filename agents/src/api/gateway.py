@@ -133,7 +133,7 @@ async def proxy_to_ingestion(path: str, request: Request):
                 url=url,
                 headers=dict(request.headers),
                 content=body,
-                timeout=300.0  # 5 minutes for ingestion
+                timeout=None  # No timeout for batch ingestion (can take hours/days)
             )
             
             return JSONResponse(
@@ -171,7 +171,7 @@ async def proxy_query(request: Request):
                 url=url,
                 headers=dict(request.headers),
                 content=body,
-                timeout=60.0  # 1 minute for queries
+                timeout=300.0  # 5 minutes for complex queries
             )
             
             return JSONResponse(
@@ -190,6 +190,95 @@ async def proxy_query(request: Request):
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail=f"Retrieval service error: {str(e)}"
+        )
+
+
+@app.get("/api/v1/ingest/status/{job_id}")
+async def proxy_job_status(job_id: str):
+    """Proxy job status requests to ingestion service."""
+    try:
+        async with httpx.AsyncClient() as client:
+            url = f"{INGESTION_SERVICE_URL}/api/v1/ingest/status/{job_id}"
+            
+            response = await client.get(url, timeout=5.0)
+            
+            return JSONResponse(
+                content=response.json() if response.content else {},
+                status_code=response.status_code
+            )
+            
+    except httpx.TimeoutException:
+        logger.error(f"Timeout getting job status: {job_id}")
+        raise HTTPException(
+            status_code=status.HTTP_504_GATEWAY_TIMEOUT,
+            detail="Job status check timeout"
+        )
+    except Exception as e:
+        logger.error(f"Error getting job status: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Job status error: {str(e)}"
+        )
+
+
+@app.get("/api/v1/ingest/jobs")
+async def proxy_list_jobs(request: Request):
+    """Proxy list jobs requests to ingestion service."""
+    try:
+        async with httpx.AsyncClient() as client:
+            url = f"{INGESTION_SERVICE_URL}/api/v1/ingest/jobs"
+            
+            # Forward query parameters
+            response = await client.get(
+                url,
+                params=dict(request.query_params),
+                timeout=5.0
+            )
+            
+            return JSONResponse(
+                content=response.json() if response.content else {},
+                status_code=response.status_code
+            )
+            
+    except httpx.TimeoutException:
+        logger.error("Timeout listing jobs")
+        raise HTTPException(
+            status_code=status.HTTP_504_GATEWAY_TIMEOUT,
+            detail="List jobs timeout"
+        )
+    except Exception as e:
+        logger.error(f"Error listing jobs: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"List jobs error: {str(e)}"
+        )
+
+
+@app.delete("/api/v1/ingest/job/{job_id}")
+async def proxy_delete_job(job_id: str):
+    """Proxy delete job requests to ingestion service."""
+    try:
+        async with httpx.AsyncClient() as client:
+            url = f"{INGESTION_SERVICE_URL}/api/v1/ingest/job/{job_id}"
+            
+            response = await client.delete(url, timeout=5.0)
+            
+            return JSONResponse(
+                content=response.json() if response.content else {},
+                status_code=response.status_code
+            )
+            
+    except httpx.TimeoutException:
+        logger.error(f"Timeout deleting job: {job_id}")
+        raise HTTPException(
+            status_code=status.HTTP_504_GATEWAY_TIMEOUT,
+            detail="Delete job timeout"
+        )
+    except Exception as e:
+        logger.error(f"Error deleting job: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Delete job error: {str(e)}"
         )
 
 

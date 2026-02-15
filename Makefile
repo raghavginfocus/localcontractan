@@ -358,6 +358,69 @@ ingest-file: ## Ingest single file via API (usage: make ingest-file FILE=path/to
 	@echo "$(GREEN)✓ File upload complete$(NC)"
 
 ingest-test: ## Run full ingestion test
+
+# Async job-based ingestion (for interactive use, handles timeouts gracefully)
+ingest-async: ## Submit async ingestion job via API (usage: make ingest-async DIR=examples)
+	@if [ -z "$(DIR)" ]; then \
+		echo "$(YELLOW)No directory specified, using default: examples$(NC)"; \
+		DIR="examples"; \
+	fi; \
+	echo "$(BLUE)Submitting async ingestion job for $$DIR...$(NC)"; \
+	@echo "$(YELLOW)Calling async ingestion API at http://localhost:8080/api/v1/ingest/async$(NC)"; \
+	curl -X POST http://localhost:8080/api/v1/ingest/async \
+		-H "Content-Type: application/json" \
+		-d "{\"file_path\": \"$$DIR\", \"override\": false}" | python3 -m json.tool || echo "$(RED)Error: API not responding$(NC)"
+	@echo "$(GREEN)✓ Async job submitted. Use 'make ingest-status JOB_ID=<id>' to check progress$(NC)"
+
+ingest-status: ## Check status of async ingestion job (usage: make ingest-status JOB_ID=xxx)
+	@if [ -z "$(JOB_ID)" ]; then \
+		echo "$(RED)Error: JOB_ID parameter required$(NC)"; \
+		echo "Usage: make ingest-status JOB_ID=<job-id>"; \
+		exit 1; \
+	fi; \
+	echo "$(BLUE)Checking status of job $(JOB_ID)...$(NC)"; \
+	curl -f http://localhost:8080/api/v1/ingest/status/$(JOB_ID) 2>/dev/null | python3 -m json.tool || echo "$(RED)Error: Job not found or API not responding$(NC)"
+
+ingest-jobs: ## List all ingestion jobs
+	@echo "$(BLUE)Listing ingestion jobs...$(NC)"
+	curl -f http://localhost:8080/api/v1/ingest/jobs 2>/dev/null | python3 -m json.tool || echo "$(RED)Error: API not responding$(NC)"
+
+ingest-jobs-running: ## List running ingestion jobs
+	@echo "$(BLUE)Listing running ingestion jobs...$(NC)"
+	curl -f "http://localhost:8080/api/v1/ingest/jobs?status_filter=running" 2>/dev/null | python3 -m json.tool || echo "$(RED)Error: API not responding$(NC)"
+
+ingest-delete-job: ## Delete an ingestion job (usage: make ingest-delete-job JOB_ID=xxx)
+	@if [ -z "$(JOB_ID)" ]; then \
+		echo "$(RED)Error: JOB_ID parameter required$(NC)"; \
+		echo "Usage: make ingest-delete-job JOB_ID=<job-id>"; \
+		exit 1; \
+	fi; \
+	echo "$(BLUE)Deleting job $(JOB_ID)...$(NC)"; \
+	curl -X DELETE http://localhost:8080/api/v1/ingest/job/$(JOB_ID) 2>/dev/null | python3 -m json.tool || echo "$(RED)Error: Job not found or API not responding$(NC)"
+
+# Bulk processing (for millions of documents - bypasses API, no timeouts)
+ingest-bulk: ## Run bulk ingestion directly in container (usage: make ingest-bulk DIR=examples)
+	@if [ -z "$(DIR)" ]; then \
+		echo "$(YELLOW)No directory specified, using default: examples$(NC)"; \
+		DIR="examples"; \
+	fi; \
+	echo "$(BLUE)Running BULK ingestion on $$DIR (direct script, no API, no timeouts)...$(NC)"; \
+	echo "$(YELLOW)This bypasses the API and runs directly in the container$(NC)"; \
+	echo "$(YELLOW)Best for: Large batches (millions of documents)$(NC)"; \
+	docker exec -it contract-kg-ingestion-api \
+		python scripts/ingestion/run_enhanced_ingestion.py --directory /app/$$DIR
+	@echo "$(GREEN)✓ Bulk ingestion complete$(NC)"
+
+ingest-bulk-override: ## Force reprocess in bulk mode (usage: make ingest-bulk-override DIR=examples)
+	@if [ -z "$(DIR)" ]; then \
+		echo "$(YELLOW)No directory specified, using default: examples$(NC)"; \
+		DIR="examples"; \
+	fi; \
+	echo "$(BLUE)Running BULK ingestion with override on $$DIR...$(NC)"; \
+	docker exec -it contract-kg-ingestion-api \
+		python scripts/ingestion/run_enhanced_ingestion.py --directory /app/$$DIR --override
+	@echo "$(GREEN)✓ Bulk ingestion complete (with override)$(NC)"
+
 	@echo "$(BLUE)Running ingestion test...$(NC)"
 	cd $(AGENTS_DIR) && $(PYTHONPATH) $(PYTHON) tests/ingestion/test_full_ingestion.py
 
