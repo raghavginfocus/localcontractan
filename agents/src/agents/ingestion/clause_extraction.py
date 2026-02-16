@@ -40,6 +40,14 @@ class ExtractedClause(BaseModel):
         default_factory=dict, description="Extracted attributes"
     )
     
+    @field_validator("clause_type", mode="before")
+    @classmethod
+    def normalize_clause_type(cls, v: Any) -> str:
+        """Provide default value if clause_type is missing."""
+        if v is None or v == "":
+            return "UnknownClause"
+        return str(v)
+    
     @field_validator("structured_summary", "attributes", mode="before")
     @classmethod
     def normalize_dict_fields(cls, v: Any) -> dict[str, Any]:

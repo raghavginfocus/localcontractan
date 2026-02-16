@@ -445,10 +445,12 @@ async def run_ingestion_job(job_id: str, file_path: str, override: bool = False)
         else:
             # Single file
             logger.info(f"Processing single file: {file_path}")
-            result = await orchestrator.ingest(
+            ingestion_result = await orchestrator.ingest(
                 file_path=file_path,
                 override=override
             )
+            # Convert IngestionResult to dict for JSON serialization
+            result = ingestion_result.model_dump() if hasattr(ingestion_result, 'model_dump') else ingestion_result
         
         # Mark as completed
         job_manager.mark_completed(job_id, result)

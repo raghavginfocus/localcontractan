@@ -248,6 +248,7 @@ class IngestionOrchestrator:
         # Initialize document registry for duplicate detection
         if self.settings.enable_duplicate_check:
             from document_registry import DocumentRegistry, ProcessingStatus
+            self.ProcessingStatus = ProcessingStatus  # Store for later use
             self.document_registry = DocumentRegistry(
                 backend=self.settings.document_registry_backend,
             )

@@ -30,12 +30,22 @@ class Party(BaseModel):
     @field_validator("contact_info", mode="before")
     @classmethod
     def normalize_contact_info(cls, v: Any) -> dict[str, str]:
-        """Convert None values in contact_info dict to empty strings."""
+        """Convert None values and nested structures in contact_info dict to strings."""
         if v is None:
             return {}
         if isinstance(v, dict):
-            # Remove None values and convert to empty strings
-            return {k: (val if val is not None else "") for k, val in v.items()}
+            # Flatten nested structures to strings
+            result = {}
+            for k, val in v.items():
+                if val is None:
+                    result[k] = ""
+                elif isinstance(val, (list, dict)):
+                    # Convert complex types to JSON string
+                    import json
+                    result[k] = json.dumps(val)
+                else:
+                    result[k] = str(val)
+            return result
         return {}
     
     @field_validator("aliases", mode="before")
