@@ -266,6 +266,51 @@ class FusekiStore(SPARQLStore):
             logger.error("Failed to load RDF data", error=str(e), format=format)
             raise
 
+    def load_turtle(self, turtle_data: str, graph_uri: str | None = None) -> bool:
+        """
+        Load Turtle RDF data into the store.
+        
+        This is an alias for load_rdf with format='turtle' for backward compatibility.
+        
+        Args:
+            turtle_data: Turtle-formatted RDF data
+            graph_uri: Optional named graph URI
+            
+        Returns:
+            True if successful
+        """
+        return self.load_rdf(turtle_data, format="turtle", graph_uri=graph_uri)
+
+    def query(self, query: str, add_prefixes: bool = True) -> Graph:
+        """
+        Execute a SPARQL query and return results as a Graph.
+        
+        This method determines the query type and calls the appropriate method.
+        For backward compatibility with code expecting a query() method.
+        
+        Args:
+            query: SPARQL query string
+            add_prefixes: Whether to add standard prefixes
+            
+        Returns:
+            Graph with results (for CONSTRUCT) or empty graph (for SELECT/ASK)
+        """
+        query_upper = query.strip().upper()
+        
+        if query_upper.startswith("CONSTRUCT"):
+            return self.execute_construct(query, add_prefixes=add_prefixes)
+        elif query_upper.startswith("SELECT"):
+            # For SELECT queries, return empty graph (backward compatibility)
+            logger.warning("query() called with SELECT - use execute_select() instead")
+            return Graph()
+        elif query_upper.startswith("ASK"):
+            # For ASK queries, return empty graph (backward compatibility)
+            logger.warning("query() called with ASK - use execute_ask() instead")
+            return Graph()
+        else:
+            # Default to CONSTRUCT
+            return self.execute_construct(query, add_prefixes=add_prefixes)
+
     def get_triple_count(self, graph_uri: str | None = None) -> int:
         """
         Get the total number of triples in a graph.
