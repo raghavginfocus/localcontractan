@@ -14,9 +14,11 @@ from agents.shared.base import BaseAgent
 class ExtractedClause(BaseModel):
     """Represents an extracted clause from a contract."""
     
-    clause_id: str = Field(description="Unique identifier for the clause")
+    clause_id: str = Field(
+        default="", description="Unique identifier for the clause"
+    )
     clause_type: str = Field(
-        description="Type of clause (e.g., TerminationClause, PaymentClause)"
+        default="", description="Type of clause (e.g., TerminationClause, PaymentClause)"
     )
     section_number: str | None = Field(
         default=None, description="Section number if present"
