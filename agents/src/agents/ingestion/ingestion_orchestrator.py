@@ -728,7 +728,7 @@ class IngestionOrchestrator:
         document_id: str,
         text: str,
     ) -> list[ExtractedClause]:
-        """Step 2: Clause extraction."""
+        """Step 2: Clause extraction with self-healing."""
         step = IngestionStep(step_name="clause_extraction", started_at=datetime.now())
         logger.info("=" * 60)
         logger.info(f"STEP 2: CLAUSE EXTRACTION - {document_id}")
@@ -736,10 +736,17 @@ class IngestionOrchestrator:
         logger.info("Calling LLM for clause identification... (this may take 2-5 minutes)")
         
         try:
-            extraction_result = await self.clause_agent.process({
-                "document_id": document_id,
-                "text": text,
-            })
+            # Use error recovery wrapper for self-healing
+            extraction_result = await self._execute_with_recovery(
+                self.clause_agent.process,
+                "clause_extraction",
+                {"document_id": document_id, "text": text}
+            )
+            
+            if extraction_result is None:
+                # Recovery failed, return empty list
+                logger.warning("Clause extraction failed after recovery attempts")
+                return []
             
             clauses = extraction_result.clauses
             result.clauses_extracted = len(clauses)
@@ -771,7 +778,7 @@ class IngestionOrchestrator:
         document_id: str,
         text: str,
     ) -> EntityExtractionResult | None:
-        """Step 3: Entity extraction."""
+        """Step 3: Entity extraction with self-healing."""
         step = IngestionStep(step_name="entity_extraction", started_at=datetime.now())
         logger.info("=" * 60)
         logger.info(f"STEP 3: ENTITY EXTRACTION - {document_id}")
@@ -779,10 +786,17 @@ class IngestionOrchestrator:
         logger.info("  Calling LLM... (this may take 2-3 minutes)")
         
         try:
-            entity_result = await self.entity_agent.process({
-                "document_id": document_id,
-                "text": text,
-            })
+            # Use error recovery wrapper for self-healing
+            entity_result = await self._execute_with_recovery(
+                self.entity_agent.process,
+                "entity_extraction",
+                {"document_id": document_id, "text": text}
+            )
+            
+            if entity_result is None:
+                # Recovery failed, return None
+                logger.warning("Entity extraction failed after recovery attempts")
+                return None
             
             entity_count = (
                 len(entity_result.parties) +
