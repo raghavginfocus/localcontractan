@@ -250,14 +250,28 @@ class FusekiStore(SPARQLStore):
                 elif response.status_code == 405:
                     # Fallback to SPARQL UPDATE if GSP POST is not supported
                     logger.warning("GSP POST returned 405, attempting SPARQL UPDATE")
-                    insert_update = f"""
-                        INSERT DATA {{
-                            GRAPH <{graph_uri}> {{
-                                {data}
+                    
+                    # Parse Turtle data to N-Triples format for INSERT DATA
+                    try:
+                        from rdflib import Graph as RDFGraph
+                        temp_graph = RDFGraph()
+                        temp_graph.parse(data=data, format=format)
+                        
+                        # Serialize to N-Triples (valid for INSERT DATA)
+                        ntriples = temp_graph.serialize(format='nt')
+                        
+                        insert_update = f"""
+                            INSERT DATA {{
+                                GRAPH <{graph_uri}> {{
+                                    {ntriples}
+                                }}
                             }}
-                        }}
-                    """
-                    return self.execute_update(insert_update)
+                        """
+                        return self.execute_update(insert_update)
+                    except Exception as parse_error:
+                        logger.error("Failed to parse RDF for SPARQL UPDATE fallback",
+                                   error=str(parse_error))
+                        raise
                 else:
                     response.raise_for_status()
                     return False
@@ -310,6 +324,18 @@ class FusekiStore(SPARQLStore):
         else:
             # Default to CONSTRUCT
             return self.execute_construct(query, add_prefixes=add_prefixes)
+    def update(self, sparql_update: str) -> bool:
+        """
+        Alias for execute_update() for backward compatibility.
+        
+        Args:
+            sparql_update: SPARQL UPDATE query
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        return self.execute_update(sparql_update)
+
 
     def get_triple_count(self, graph_uri: str | None = None) -> int:
         """

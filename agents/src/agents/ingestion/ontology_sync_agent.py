@@ -148,12 +148,18 @@ class OntologySyncAgent(BaseAgent):
             # Serialize to Turtle for Fuseki
             turtle_data = graph.serialize(format="turtle")
             
+            # Parse Turtle to N-Triples for valid SPARQL INSERT DATA syntax
+            from rdflib import Graph as RDFGraph
+            temp_graph = RDFGraph()
+            temp_graph.parse(data=turtle_data, format='turtle')
+            ntriples = temp_graph.serialize(format='nt')
+            
             # Use SPARQL UPDATE to add triples to ontology graph
             # This preserves existing ontology while adding new concepts
             update_query = f"""
             INSERT DATA {{
                 GRAPH <{self.ontology_graph_uri}> {{
-                    {turtle_data}
+                    {ntriples}
                 }}
             }}
             """
