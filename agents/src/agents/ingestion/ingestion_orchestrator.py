@@ -329,6 +329,8 @@ class IngestionOrchestrator:
         from service_factory import get_service_factory
         
         factory = get_service_factory()
+        sparql_store = factory.get_sparql_store()
+        vector_store = factory.get_vector_store()
         
         # Initialize agents
         self.document_agent = DocumentIngestionAgent(settings=self.settings)
@@ -339,12 +341,15 @@ class IngestionOrchestrator:
         self.rdf_agent = RDFGeneratorAgent(settings=self.settings)
         self.validation_agent = ValidationAgent(settings=self.settings)
         self.fuseki_agent = FusekiLoaderAgent(
-            sparql_store=factory.get_sparql_store(),
+            sparql_store=sparql_store,
             settings=self.settings
         )
-        self.reasoning_agent = ReasoningAgent(settings=self.settings)
+        self.reasoning_agent = ReasoningAgent(
+            sparql_store=sparql_store,
+            settings=self.settings
+        )
         self.vector_agent = VectorIndexAgent(
-            vector_store=factory.get_vector_store(),
+            vector_store=vector_store,
             settings=self.settings
         )
         
@@ -358,7 +363,10 @@ class IngestionOrchestrator:
             self.pattern_detector = PatternDetectionAgent(settings=self.settings)
         
         # Ontology sync agent
-        self.ontology_sync = OntologySyncAgent(settings=self.settings)
+        self.ontology_sync = OntologySyncAgent(
+            sparql_store=sparql_store,
+            settings=self.settings
+        )
 
     async def ingest(
         self,
