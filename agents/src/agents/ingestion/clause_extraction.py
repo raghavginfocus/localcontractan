@@ -40,6 +40,15 @@ class ExtractedClause(BaseModel):
         default_factory=dict, description="Extracted attributes"
     )
     
+    @field_validator("clause_id", mode="before")
+    @classmethod
+    def normalize_clause_id(cls, v: Any) -> str:
+        """Provide default value if clause_id is missing."""
+        if v is None or v == "":
+            import uuid
+            return f"cl_{uuid.uuid4().hex[:8]}"
+        return str(v)
+    
     @field_validator("clause_type", mode="before")
     @classmethod
     def normalize_clause_type(cls, v: Any) -> str:
