@@ -107,57 +107,39 @@ make docs-deploy
 
 ## System Architecture
 
+### Microservices Design
+
 ```
-
-Contract Documents (PDF/DOCX) 
-
-
-
-
-INGESTION PIPELINE (10+ Agents) 
-Document → Clause Extraction → Entity Extraction → RDF Gen 
-→ Validation → Fuseki Load → Vector Index → Reasoning 
-→ Batch Processing → Ontology Sync 
-
-
-
-
-Apache Jena Milvus Vector 
-Fuseki (SPARQL) Store (Search) 
-+ OWL Ontology 1024-dim vectors
-
-
-
-
-
-
-RETRIEVAL PIPELINE (6+ Agents) 
-Query Analysis → Complexity Detection → Hybrid Retrieval 
-→ Answer Synthesis (Simple RAG or ReAct Multi-Step) 
-
-
-Iterative Refinement Loop (for complex queries) 
-Answer → Critique Agent → Quality Check 
-↓ ↓ 
-→ Refine & Re-retrieve (if needed) 
-
-
-
-
-
-Final Response
-+ Citations 
-+ Confidence 
-
+┌─────────────────────────────────────────────────────────────┐
+│                     API Gateway (8080)                       │
+│              Unified Entry Point & Routing                   │
+└────────────────┬────────────────────────────┬────────────────┘
+                 │                            │
+        ┌────────▼────────┐          ┌───────▼────────┐
+        │ Ingestion API   │          │ Retrieval API  │
+        │    (8001)       │          │    (8002)      │
+        └────────┬────────┘          └───────┬────────┘
+                 │                            │
+        ┌────────▼────────────────────────────▼────────┐
+        │         Apache Jena Fuseki (3030)            │
+        │    Knowledge Graph + SPARQL + Reasoning      │
+        └──────────────────┬───────────────────────────┘
+                           │
+        ┌──────────────────▼───────────────────────────┐
+        │         Milvus Vector Store (19530)          │
+        │      Semantic Search (1024-dim vectors)      │
+        └──────────────────────────────────────────────┘
 ```
 
 **Core Components:**
-- **Multi-Agent System**: 10 ingestion agents + 4 retrieval agents
+- **Microservices**: Ingestion API, Retrieval API, API Gateway
+- **Multi-Agent System**: 10+ ingestion agents + 6+ retrieval agents
 - **Knowledge Graph**: Apache Jena Fuseki + TDB2 with OWL ontology & inference rules
 - **Vector Store**: Milvus for semantic search (IVF_FLAT index, COSINE metric)
 - **Hybrid RAG**: Intelligent routing between vector search + SPARQL queries
 - **LLM Providers**: IBM WatsonX AI, Ollama (local models)
 - **Observability**: Arize Phoenix tracing, structured logging, performance metrics
+- **Automatic Initialization**: Dataset creation, ontology loading on startup
 
 ## Key Features
 
@@ -170,16 +152,22 @@ Final Response
 
 ## Services
 
+The system runs as microservices with automatic initialization:
+
 ```bash
 # View all service URLs
 make urls
 ```
 
-- **Fuseki**: http://localhost:3030 (admin/admin123)
-- **Milvus**: http://localhost:19530
-- **Attu (Milvus UI)**: http://localhost:8080
-- **Phoenix**: http://localhost:6006
-- **Documentation**: http://localhost:8000
+**Core Services:**
+- **API Gateway**: http://localhost:8080 (unified entry point)
+- **Ingestion API**: http://localhost:8001 (document processing)
+- **Retrieval API**: http://localhost:8002 (query processing)
+- **Fuseki**: http://localhost:3030 (SPARQL endpoint, admin/admin123)
+- **Milvus**: http://localhost:19530 (vector store)
+- **Attu (Milvus UI)**: http://localhost:8081 (Milvus management)
+- **Phoenix**: http://localhost:6006 (observability)
+- **Documentation**: http://localhost:8000 (MkDocs)
 
 ## Testing
 
@@ -206,16 +194,27 @@ make daily-dev
 
 # Full system reset
 make full-reset
+```
 
-# Ingest documents (enhanced with batch processing)
+### Document Ingestion
+
+```bash
+# Ingest documents from directory
 make ingest DIR=examples
 
-# Force reprocess all documents
+# Force reprocess all documents (override existing)
 make ingest-override DIR=examples
 
 # Run ingestion test
 make ingest-test
 ```
+
+**Features:**
+- Automatic directory scanning for PDF/DOCX files
+- Batch processing with concurrency control
+- Duplicate detection and skip logic
+- Progress tracking and detailed logging
+- Automatic retry on failures
 
 ## API Testing
 
@@ -260,35 +259,19 @@ make services-logs-milvus
 make health
 ```
 
-## Logs & Analysis
+## Logs
 
 ```bash
-# View latest logs
-make logs-view
+# View service logs
+make logs-ingestion      # Ingestion service logs
+make logs-retrieval      # Retrieval service logs
+make logs-gateway        # API gateway logs
+make logs-all            # All services
 
-# View all logs
-make logs-view-all
-
-# Centralize logs
-make logs-centralize
-
-# Analyze ingestion logs
-make logs-analyze-ingestion
-
-# Analyze last N ingestion runs
-make logs-analyze-ingestion-last N=5
-
-# Save ingestion analysis to file
-make logs-analyze-ingestion-save
-
-# Analyze retrieval logs
-make logs-analyze-retrieval
-
-# Analyze last N retrieval sessions
-make logs-analyze-retrieval-last N=10
-
-# Save retrieval analysis to file
-make logs-analyze-retrieval-save
+# View infrastructure logs
+make services-logs-fuseki
+make services-logs-milvus
+make services-logs        # All infrastructure
 ```
 
 ## Verification

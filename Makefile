@@ -269,123 +269,56 @@ api-health-gateway: ## Check API gateway health
 
 ##@ Data Management
 
-data-load-all: ## Load ontology and sample data into Fuseki
-	@echo "$(BLUE)Loading all data...$(NC)"
-	cd $(AGENTS_DIR) && $(PYTHONPATH) $(PYTHON) ../scripts/data/load_data.py --all
-	@echo "$(GREEN)✓ Data loaded$(NC)"
-
-data-load-ontology: ## Load ontology only
-	@echo "$(BLUE)Loading ontology...$(NC)"
-	cd $(AGENTS_DIR) && $(PYTHONPATH) $(PYTHON) ../scripts/data/load_data.py --ontology
-
-data-setup-text-index: ## Setup Fuseki with text indexing
-	@echo "$(BLUE)Setting up Fuseki text index...$(NC)"
-	cd $(AGENTS_DIR) && $(PYTHONPATH) $(PYTHON) ../scripts/setup/setup_fuseki_with_text_index.py
-
-data-load-sample: ## Load sample data only
-	@echo "$(BLUE)Loading sample data...$(NC)"
-	cd $(AGENTS_DIR) && $(PYTHONPATH) $(PYTHON) ../scripts/data/load_data.py --sample
-
-data-setup-fuseki: ## Setup Fuseki dataset
-	@echo "$(BLUE)Setting up Fuseki dataset...$(NC)"
-	cd $(AGENTS_DIR) && $(PYTHONPATH) $(PYTHON) ../scripts/setup/setup_fuseki.py
-
-data-index-clauses: ## Index clauses in Milvus
-	@echo "$(BLUE)Indexing clauses...$(NC)"
-	cd $(AGENTS_DIR) && $(PYTHONPATH) $(PYTHON) ../scripts/index_clauses.py
-	@echo "$(GREEN)✓ Clauses indexed$(NC)"
-
-data-migrate-milvus: ## Migrate Milvus schema
-	@echo "$(BLUE)Migrating Milvus schema...$(NC)"
-	cd $(AGENTS_DIR) && $(PYTHONPATH) $(PYTHON) ../scripts/setup/migrate_milvus_schema.py
+# Note: Data loading is now automatic on container startup
+# Fuseki automatically creates dataset and loads ontology via init-fuseki.sh
+# No manual data loading commands needed
 
 ##@ Ingestion Pipeline
 
-# Direct Python script execution (legacy)
-ingest-script: ## Run ingestion using Python script directly (usage: make ingest-script DIR=examples)
+# Primary ingestion commands (direct script execution in container)
+ingest: ## Run ingestion (usage: make ingest DIR=examples)
 	@if [ -z "$(DIR)" ]; then \
 		echo "$(YELLOW)No directory specified, using default: examples$(NC)"; \
 		DIR="examples"; \
 	fi; \
-	echo "$(BLUE)Running enhanced ingestion on $$DIR...$(NC)"; \
-	cd $(AGENTS_DIR) && $(PYTHONPATH) $(PYTHON) ../scripts/ingestion/run_enhanced_ingestion.py --directory ../$$DIR
+	echo "$(BLUE)Running ingestion on $$DIR...$(NC)"; \
+	docker exec -it contract-kg-ingestion-api \
+		python scripts/ingestion/run_enhanced_ingestion.py --directory /app/$$DIR
 	@echo "$(GREEN)✓ Ingestion complete$(NC)"
 
-ingest-script-override: ## Force reprocess using script (usage: make ingest-script-override DIR=examples)
+ingest-override: ## Force reprocess all documents (usage: make ingest-override DIR=examples)
 	@if [ -z "$(DIR)" ]; then \
 		echo "$(YELLOW)No directory specified, using default: examples$(NC)"; \
 		DIR="examples"; \
 	fi; \
-	echo "$(BLUE)Running enhanced ingestion with override on $$DIR...$(NC)"; \
-	cd $(AGENTS_DIR) && $(PYTHONPATH) $(PYTHON) ../scripts/ingestion/run_enhanced_ingestion.py --directory ../$$DIR --override
-	@echo "$(GREEN)✓ Ingestion complete (with override)$(NC)"
+	echo "$(BLUE)Running ingestion with override on $$DIR...$(NC)"; \
+	docker exec -it contract-kg-ingestion-api \
+		python scripts/ingestion/run_enhanced_ingestion.py --directory /app/$$DIR --override
 
-# API-based ingestion (recommended)
-ingest: ## Run ingestion via API gateway (usage: make ingest DIR=examples)
-	@if [ -z "$(DIR)" ]; then \
-		echo "$(YELLOW)No directory specified, using default: examples$(NC)"; \
-		DIR="examples"; \
-	fi; \
-	echo "$(BLUE)Running ingestion via API on $$DIR...$(NC)"; \
-	@echo "$(YELLOW)Calling ingestion API at http://localhost:8080/api/v1/ingest$(NC)"; \
-	curl -X POST http://localhost:8080/api/v1/ingest \
-		-H "Content-Type: application/json" \
-		-d "{\"directory\": \"$$DIR\", \"override\": false}" | python3 -m json.tool || echo "$(RED)Error: API not responding$(NC)"
-	@echo "$(GREEN)✓ Ingestion request submitted$(NC)"
-
-ingest-override: ## Force reprocess via API (usage: make ingest-override DIR=examples)
-	@if [ -z "$(DIR)" ]; then \
-		echo "$(YELLOW)No directory specified, using default: examples$(NC)"; \
-		DIR="examples"; \
-	fi; \
-	echo "$(BLUE)Running ingestion with override via API on $$DIR...$(NC)"; \
-	@echo "$(YELLOW)Calling ingestion API at http://localhost:8080/api/v1/ingest$(NC)"; \
-	curl -X POST http://localhost:8080/api/v1/ingest \
-		-H "Content-Type: application/json" \
-		-d "{\"directory\": \"$$DIR\", \"override\": true}" | python3 -m json.tool || echo "$(RED)Error: API not responding$(NC)"
-	@echo "$(GREEN)✓ Ingestion request submitted (with override)$(NC)"
-
-ingest-file: ## Ingest single file via API (usage: make ingest-file FILE=path/to/file.pdf)
-	@if [ -z "$(FILE)" ]; then \
-		echo "$(RED)Error: FILE parameter required$(NC)"; \
-		echo "Usage: make ingest-file FILE=examples/contract.pdf"; \
-		exit 1; \
-	fi
-	@echo "$(BLUE)Uploading file via API: $(FILE)$(NC)"; \
-	@echo "$(YELLOW)Calling ingestion API at http://localhost:8080/api/v1/ingest/upload$(NC)"; \
-	curl -X POST http://localhost:8080/api/v1/ingest/upload \
-		-F "file=@$(FILE)" | python3 -m json.tool || echo "$(RED)Error: API not responding$(NC)"
-	@echo "$(GREEN)✓ File upload complete$(NC)"
-
-ingest-test: ## Run full ingestion test
-
-# Async job-based ingestion (for interactive use, handles timeouts gracefully)
+# API-based async ingestion (for background processing with job tracking)
 ingest-async: ## Submit async ingestion job via API (usage: make ingest-async DIR=examples)
 	@if [ -z "$(DIR)" ]; then \
 		echo "$(YELLOW)No directory specified, using default: examples$(NC)"; \
 		DIR="examples"; \
 	fi; \
 	echo "$(BLUE)Submitting async ingestion job for $$DIR...$(NC)"; \
-	@echo "$(YELLOW)Calling async ingestion API at http://localhost:8080/api/v1/ingest/async$(NC)"; \
 	curl -X POST http://localhost:8080/api/v1/ingest/async \
 		-H "Content-Type: application/json" \
 		-d "{\"file_path\": \"$$DIR\", \"override\": false}" | python3 -m json.tool || echo "$(RED)Error: API not responding$(NC)"
+	@echo "$(GREEN)✓ Async job submitted. Use 'make ingest-status JOB_ID=<id>' to check progress$(NC)"
 
-ingest-async-override: ## Submit async ingestion job with override (usage: make ingest-async-override DIR=examples)
+ingest-async-override: ## Submit async job with override (usage: make ingest-async-override DIR=examples)
 	@if [ -z "$(DIR)" ]; then \
 		echo "$(YELLOW)No directory specified, using default: examples$(NC)"; \
 		DIR="examples"; \
 	fi; \
 	echo "$(BLUE)Submitting async ingestion job with OVERRIDE for $$DIR...$(NC)"; \
-	@echo "$(YELLOW)Calling async ingestion API at http://localhost:8080/api/v1/ingest/async$(NC)"; \
 	curl -X POST http://localhost:8080/api/v1/ingest/async \
 		-H "Content-Type: application/json" \
 		-d "{\"file_path\": \"$$DIR\", \"override\": true}" | python3 -m json.tool || echo "$(RED)Error: API not responding$(NC)"
 	@echo "$(GREEN)✓ Async job submitted with override. Use 'make ingest-status JOB_ID=<id>' to check progress$(NC)"
 
-	@echo "$(GREEN)✓ Async job submitted. Use 'make ingest-status JOB_ID=<id>' to check progress$(NC)"
-
-ingest-status: ## Check status of async ingestion job (usage: make ingest-status JOB_ID=xxx)
+ingest-status: ## Check async job status (usage: make ingest-status JOB_ID=xxx)
 	@if [ -z "$(JOB_ID)" ]; then \
 		echo "$(RED)Error: JOB_ID parameter required$(NC)"; \
 		echo "Usage: make ingest-status JOB_ID=<job-id>"; \
@@ -410,29 +343,9 @@ ingest-delete-job: ## Delete an ingestion job (usage: make ingest-delete-job JOB
 	fi; \
 	echo "$(BLUE)Deleting job $(JOB_ID)...$(NC)"; \
 	curl -X DELETE http://localhost:8080/api/v1/ingest/job/$(JOB_ID) 2>/dev/null | python3 -m json.tool || echo "$(RED)Error: Job not found or API not responding$(NC)"
+	@echo "$(GREEN)✓ Ingestion complete (with override)$(NC)"
 
-# Bulk processing (for millions of documents - bypasses API, no timeouts)
-ingest-bulk: ## Run bulk ingestion directly in container (usage: make ingest-bulk DIR=examples)
-	@if [ -z "$(DIR)" ]; then \
-		echo "$(YELLOW)No directory specified, using default: examples$(NC)"; \
-		DIR="examples"; \
-	fi; \
-	echo "$(BLUE)Running BULK ingestion on $$DIR (direct script, no API, no timeouts)...$(NC)"; \
-	echo "$(YELLOW)This bypasses the API and runs directly in the container$(NC)"; \
-	echo "$(YELLOW)Best for: Large batches (millions of documents)$(NC)"; \
-	docker exec -it contract-kg-ingestion-api \
-		python scripts/ingestion/run_enhanced_ingestion.py --directory /app/$$DIR
-	@echo "$(GREEN)✓ Bulk ingestion complete$(NC)"
-
-ingest-bulk-override: ## Force reprocess in bulk mode (usage: make ingest-bulk-override DIR=examples)
-	@if [ -z "$(DIR)" ]; then \
-		echo "$(YELLOW)No directory specified, using default: examples$(NC)"; \
-		DIR="examples"; \
-	fi; \
-	echo "$(BLUE)Running BULK ingestion with override on $$DIR...$(NC)"; \
-	docker exec -it contract-kg-ingestion-api \
-		python scripts/ingestion/run_enhanced_ingestion.py --directory /app/$$DIR --override
-	@echo "$(GREEN)✓ Bulk ingestion complete (with override)$(NC)"
+ingest-test: ## Run full ingestion test
 
 	@echo "$(BLUE)Running ingestion test...$(NC)"
 	cd $(AGENTS_DIR) && $(PYTHONPATH) $(PYTHON) tests/ingestion/test_full_ingestion.py
@@ -664,40 +577,17 @@ benchmark: ## Run system benchmark
 
 ##@ Logs & Analysis
 
-logs-view: ## View latest logs
-	cd $(AGENTS_DIR) && $(PYTHONPATH) $(PYTHON) ../scripts/analysis/view_logs.py --last
+logs-ingestion: ## View ingestion service logs
+	cd $(DOCKER_DIR) && docker-compose logs -f ingestion-api
 
-logs-view-all: ## View all logs
-	cd $(AGENTS_DIR) && $(PYTHONPATH) $(PYTHON) ../scripts/analysis/view_logs.py --all
+logs-retrieval: ## View retrieval service logs
+	cd $(DOCKER_DIR) && docker-compose logs -f retrieval-api
 
-logs-centralize: ## Centralize logs
-	cd $(AGENTS_DIR) && $(PYTHONPATH) $(PYTHON) ../scripts/utilities/centralize_logs.py
+logs-gateway: ## View API gateway logs
+	cd $(DOCKER_DIR) && docker-compose logs -f gateway-api
 
-logs-analyze-ingestion: ## Analyze ingestion logs
-	cd $(AGENTS_DIR) && $(PYTHONPATH) $(PYTHON) ../scripts/analysis/analyze_ingestion_logs.py
-
-logs-analyze-ingestion-last: ## Analyze last N ingestion runs (usage: make logs-analyze-ingestion-last N=5)
-	@if [ -z "$(N)" ]; then \
-		cd $(AGENTS_DIR) && $(PYTHONPATH) $(PYTHON) ../scripts/analysis/analyze_ingestion_logs.py --last 5; \
-	else \
-		cd $(AGENTS_DIR) && $(PYTHONPATH) $(PYTHON) ../scripts/analysis/analyze_ingestion_logs.py --last $(N); \
-	fi
-
-logs-analyze-ingestion-save: ## Analyze ingestion logs and save to file
-	cd $(AGENTS_DIR) && $(PYTHONPATH) $(PYTHON) ../scripts/analysis/analyze_ingestion_logs.py --output logs/ingestion/analysis_report.md
-
-logs-analyze-retrieval: ## Analyze retrieval logs
-	cd $(AGENTS_DIR) && $(PYTHONPATH) $(PYTHON) ../scripts/analysis/analyze_retrieval_logs.py
-
-logs-analyze-retrieval-last: ## Analyze last N retrieval sessions (usage: make logs-analyze-retrieval-last N=10)
-	@if [ -z "$(N)" ]; then \
-		cd $(AGENTS_DIR) && $(PYTHONPATH) $(PYTHON) ../scripts/analysis/analyze_retrieval_logs.py --last 10; \
-	else \
-		cd $(AGENTS_DIR) && $(PYTHONPATH) $(PYTHON) ../scripts/analysis/analyze_retrieval_logs.py --last $(N); \
-	fi
-
-logs-analyze-retrieval-save: ## Analyze retrieval logs and save to file
-	cd $(AGENTS_DIR) && $(PYTHONPATH) $(PYTHON) ../scripts/analysis/analyze_retrieval_logs.py --last 10 --output logs/retrieval/analysis_report.md
+logs-all: ## View all service logs
+	cd $(DOCKER_DIR) && docker-compose logs -f
 
 ##@ Java/Maven (Jena Core)
 
