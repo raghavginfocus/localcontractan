@@ -19,19 +19,46 @@ class Party(BaseModel):
     name: str = Field(description="Full legal name of the party")
     role: str = Field(description="Role in contract: Buyer, Supplier, Contractor, etc.")
     address: str | None = Field(default=None, description="Address if mentioned")
-    contact_info: dict[str, str] = Field(default_factory=dict, description="Contact information")
-    aliases: list[str] = Field(default_factory=list, description="Alternative names or abbreviations")
+    contact_info: dict[str, str] = Field(
+        default_factory=dict, description="Contact information"
+    )
+    aliases: list[str] = Field(
+        default_factory=list,
+        description="Alternative names or abbreviations"
+    )
     
     @field_validator("contact_info", mode="before")
     @classmethod
     def normalize_contact_info(cls, v: Any) -> dict[str, str]:
-        """Convert None values in contact_info dict to empty strings."""
+        """Convert None values and nested structures in contact_info dict to strings."""
         if v is None:
             return {}
         if isinstance(v, dict):
-            # Remove None values and convert to empty strings
-            return {k: (v if v is not None else "") for k, v in v.items()}
+            # Flatten nested structures to strings
+            result = {}
+            for k, val in v.items():
+                if val is None:
+                    result[k] = ""
+                elif isinstance(val, (list, dict)):
+                    # Convert complex types to JSON string
+                    import json
+                    result[k] = json.dumps(val)
+                else:
+                    result[k] = str(val)
+            return result
         return {}
+    
+    @field_validator("aliases", mode="before")
+    @classmethod
+    def normalize_aliases(cls, v: Any) -> list[str]:
+        """Convert None to empty list for aliases."""
+        if v is None:
+            return []
+        if isinstance(v, list):
+            return v
+        if isinstance(v, str):
+            return [v]  # Single string becomes list
+        return []
 
 
 class ContractDate(BaseModel):
@@ -48,33 +75,87 @@ class MonetaryAmount(BaseModel):
     """Represents a monetary value in a contract."""
     
     amount_id: str = Field(description="Unique identifier")
-    amount_type: str = Field(description="Type: ContractValue, PenaltyAmount, Threshold, etc.")
-    value: float | None = Field(default=None, description="Numeric value if extractable")
+    amount_type: str = Field(
+        description="Type: ContractValue, PenaltyAmount, Threshold, etc."
+    )
+    value: float | None = Field(
+        default=None, description="Numeric value if extractable"
+    )
     currency: str = Field(default="USD", description="Currency code")
     description: str = Field(description="Context of the amount")
-    is_estimate: bool = Field(default=False, description="Whether this is an estimate")
+    is_estimate: bool = Field(
+        default=False, description="Whether this is an estimate"
+    )
     reference_clause: str | None = Field(default=None, description="Source clause")
+    
+    @field_validator("currency", mode="before")
+    @classmethod
+    def normalize_currency(cls, v: Any) -> str:
+        """Ensure currency is always a string, default to USD."""
+        if v is None or v == "":
+            return "USD"
+        if isinstance(v, str):
+            return v.upper()  # Normalize to uppercase
+        return "USD"
 
 
 class Jurisdiction(BaseModel):
     """Represents a jurisdiction or governing law."""
     
     jurisdiction_id: str = Field(description="Unique identifier")
-    name: str = Field(description="Jurisdiction name (e.g., State of Delaware)")
-    jurisdiction_type: str = Field(description="Type: State, Country, Federal, etc.")
-    applies_to: str = Field(default="GoverningLaw", description="What this jurisdiction governs")
+    name: str = Field(
+        description="Jurisdiction name (e.g., State of Delaware)"
+    )
+    jurisdiction_type: str = Field(
+        default="Unknown",
+        description="Type: State, Country, Federal, etc."
+    )
+    applies_to: str = Field(
+        default="GoverningLaw",
+        description="What this jurisdiction governs"
+    )
+    
+    @field_validator("jurisdiction_type", mode="before")
+    @classmethod
+    def normalize_jurisdiction_type(cls, v: Any) -> str:
+        """Ensure jurisdiction_type is never None."""
+        if v is None or v == "":
+            return "Unknown"
+        return str(v)
 
 
 class EntityExtractionResult(BaseModel):
     """Result of entity extraction."""
     
     document_id: str = Field(description="ID of the source document")
-    parties: list[Party] = Field(default_factory=list, description="Extracted parties")
-    dates: list[ContractDate] = Field(default_factory=list, description="Extracted dates")
-    amounts: list[MonetaryAmount] = Field(default_factory=list, description="Extracted amounts")
-    jurisdictions: list[Jurisdiction] = Field(default_factory=list, description="Extracted jurisdictions")
-    contract_title: str | None = Field(default=None, description="Title of the contract")
-    contract_type: str | None = Field(default=None, description="Type of contract")
+    parties: list[Party] = Field(
+        default_factory=list, description="Extracted parties"
+    )
+    dates: list[ContractDate] = Field(
+        default_factory=list, description="Extracted dates"
+    )
+    amounts: list[MonetaryAmount] = Field(
+        default_factory=list, description="Extracted amounts"
+    )
+    jurisdictions: list[Jurisdiction] = Field(
+        default_factory=list, description="Extracted jurisdictions"
+    )
+    contract_title: str | None = Field(
+        default=None, description="Title of the contract"
+    )
+    contract_type: str | None = Field(
+        default=None, description="Type of contract"
+    )
+    
+    @field_validator("parties", "dates", "amounts", "jurisdictions", mode="before")
+    @classmethod
+    def normalize_lists(cls, v: Any) -> list:
+        """Convert None to empty list for all list fields."""
+        if v is None:
+            return []
+        if isinstance(v, list):
+            return v
+        return []
 
 
 class EntityExtractionAgent(BaseAgent):

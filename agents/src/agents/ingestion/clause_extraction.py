@@ -14,12 +14,22 @@ from agents.shared.base import BaseAgent
 class ExtractedClause(BaseModel):
     """Represents an extracted clause from a contract."""
     
-    clause_id: str = Field(description="Unique identifier for the clause")
-    clause_type: str = Field(description="Type of clause (e.g., TerminationClause, PaymentClause)")
-    section_number: str | None = Field(default=None, description="Section number if present")
+    clause_id: str = Field(
+        default="", description="Unique identifier for the clause"
+    )
+    clause_type: str = Field(
+        default="", description="Type of clause (e.g., TerminationClause, PaymentClause)"
+    )
+    section_number: str | None = Field(
+        default=None, description="Section number if present"
+    )
     title: str | None = Field(default=None, description="Clause title if present")
-    raw_text: str = Field(description="Original text of the clause")
-    summary: str = Field(default="", description="Brief 5-10 sentence summary of the clause")
+    raw_text: str = Field(
+        default="", description="Original text of the clause"
+    )
+    summary: str = Field(
+        default="", description="Brief 5-10 sentence summary of the clause"
+    )
     key_points: list[str] = Field(
         default_factory=list,
         description="Key points (5-10 bullets) capturing important terms",
@@ -28,7 +38,26 @@ class ExtractedClause(BaseModel):
         default_factory=dict,
         description="Structured key-value summary (JSON) for filters/audit",
     )
-    attributes: dict[str, Any] = Field(default_factory=dict, description="Extracted attributes")
+    attributes: dict[str, Any] = Field(
+        default_factory=dict, description="Extracted attributes"
+    )
+    
+    @field_validator("clause_id", mode="before")
+    @classmethod
+    def normalize_clause_id(cls, v: Any) -> str:
+        """Provide default value if clause_id is missing."""
+        if v is None or v == "":
+            import uuid
+            return f"cl_{uuid.uuid4().hex[:8]}"
+        return str(v)
+    
+    @field_validator("clause_type", mode="before")
+    @classmethod
+    def normalize_clause_type(cls, v: Any) -> str:
+        """Provide default value if clause_type is missing."""
+        if v is None or v == "":
+            return "UnknownClause"
+        return str(v)
     
     @field_validator("structured_summary", "attributes", mode="before")
     @classmethod
@@ -45,6 +74,14 @@ class ExtractedClause(BaseModel):
         if v is None:
             return []
         return v if isinstance(v, list) else []
+    
+    @field_validator("raw_text", "summary", mode="before")
+    @classmethod
+    def normalize_string_fields(cls, v: Any) -> str:
+        """Convert None to empty string for required string fields."""
+        if v is None:
+            return ""
+        return str(v)
 
 
 class ClauseExtractionResult(BaseModel):

@@ -14,10 +14,16 @@ from pydantic import BaseModel, Field
 
 from agents.ingestion.document_ingestion import DocumentIngestionAgent
 from logger import get_module_logger
-from agents.ingestion.clause_extraction import ClauseExtractionAgent, ExtractedClause
-from agents.ingestion.entity_extraction import EntityExtractionAgent, EntityExtractionResult
+from agents.ingestion.clause_extraction import (
+    ClauseExtractionAgent, ExtractedClause
+)
+from agents.ingestion.entity_extraction import (
+    EntityExtractionAgent, EntityExtractionResult
+)
 from agents.ingestion.obligation_risk import ObligationRiskAgent
-from agents.ingestion.ontology_alignment import OntologyAlignmentAgent, AlignmentResult
+from agents.ingestion.ontology_alignment import (
+    OntologyAlignmentAgent, AlignmentResult
+)
 from agents.ingestion.rdf_generator import RDFGeneratorAgent
 from agents.ingestion.validation_agent import ValidationAgent, ValidationResult
 from agents.ingestion.fuseki_loader import FusekiLoaderAgent, LoadResult
@@ -29,6 +35,7 @@ from agents.schema_evolution.rule_generator import RuleGeneratorAgent, RulePatte
 from agents.schema_evolution.shacl_generator import SHACLGeneratorAgent
 from agents.schema_evolution.pattern_detection import PatternDetectionAgent
 from agents.ingestion.resource_manager import get_resource_manager
+from agents.shared.error_recovery import ErrorRecoveryAgent
 from schema_governance import SchemaGovernance, SchemaVersion, SchemaConflict
 from artifact_store import ArtifactStore
 from config import Settings, get_settings
@@ -241,14 +248,126 @@ class IngestionOrchestrator:
         # Initialize document registry for duplicate detection
         if self.settings.enable_duplicate_check:
             from document_registry import DocumentRegistry, ProcessingStatus
+            self.ProcessingStatus = ProcessingStatus  # Store for later use
             self.document_registry = DocumentRegistry(
                 backend=self.settings.document_registry_backend,
-                redis_url=self.settings.document_registry_redis_url if self.settings.document_registry_backend == "redis" else None,
-                settings=self.settings,
             )
-            self.ProcessingStatus = ProcessingStatus  # Store for use in ingest method
         else:
             self.document_registry = None
+        
+        # Initialize all agents
+        self._initialize_agents()
+    
+    async def _execute_with_recovery(
+        self,
+        operation: Any,
+        operation_name: str,
+        *args,
+        **kwargs
+    ) -> Any:
+        """
+        Execute an agent operation with automatic error recovery.
+        
+        This wrapper provides:
+        - Automatic retry with exponential backoff (max 3 attempts)
+        - Error diagnosis and fix suggestions
+        - Recovery attempt tracking
+        - Graceful degradation
+        
+        Args:
+            operation: The agent method to call
+            operation_name: Name for logging
+            *args: Positional arguments for operation
+            **kwargs: Keyword arguments for operation
+        
+        Returns:
+            Result from operation, or None if all recovery attempts fail
+        """
+        recovery_agent = ErrorRecoveryAgent(max_retries=3)
+        
+        try:
+            # Try the operation first
+            return await operation(*args, **kwargs)
+        except Exception as e:
+            # Log the initial failure
+            logger.warning(
+                f"{operation_name} failed, attempting recovery...",
+                error=str(e)
+            )
+            
+            # Attempt recovery
+            recovery_result = await recovery_agent.process({
+                "operation": operation,
+                "args": args,
+                "kwargs": kwargs,
+                "error": e,
+                "context": {"operation_name": operation_name}
+            })
+            
+            if recovery_result.success:
+                logger.info(
+                    f"✓ {operation_name} recovered after "
+                    f"{len(recovery_result.attempts)} attempts"
+                )
+                return recovery_result.result
+            else:
+                logger.error(
+                    f"✗ {operation_name} failed after "
+                    f"{len(recovery_result.attempts)} recovery attempts"
+                )
+                # Log all attempts for debugging
+                for i, attempt in enumerate(recovery_result.attempts, 1):
+                    logger.debug(
+                        f"  Attempt {i}: {attempt.error_type.value} - "
+                        f"{attempt.diagnosis}"
+                    )
+                
+                # Return None to allow graceful degradation
+                return None
+    
+    def _initialize_agents(self) -> None:
+        """Initialize all pipeline agents."""
+        from service_factory import get_service_factory
+        
+        factory = get_service_factory()
+        sparql_store = factory.get_sparql_store()
+        vector_store = factory.get_vector_store()
+        
+        # Initialize agents
+        self.document_agent = DocumentIngestionAgent(settings=self.settings)
+        self.clause_agent = ClauseExtractionAgent(settings=self.settings)
+        self.entity_agent = EntityExtractionAgent(settings=self.settings)
+        self.obligation_agent = ObligationRiskAgent(settings=self.settings)
+        self.alignment_agent = OntologyAlignmentAgent(settings=self.settings)
+        self.rdf_agent = RDFGeneratorAgent(settings=self.settings)
+        self.validation_agent = ValidationAgent(settings=self.settings)
+        self.fuseki_agent = FusekiLoaderAgent(
+            sparql_store=sparql_store,
+            settings=self.settings
+        )
+        self.reasoning_agent = ReasoningAgent(
+            sparql_store=sparql_store,
+            settings=self.settings
+        )
+        self.vector_agent = VectorIndexAgent(
+            vector_store=vector_store,
+            settings=self.settings
+        )
+        
+        # Schema evolution agents (optional)
+        if self.config.generate_owl_extensions:
+            self.ontology_designer = OntologyDesignerAgent(settings=self.settings)
+            self.shacl_generator = SHACLGeneratorAgent(settings=self.settings)
+        
+        if self.config.generate_rules:
+            self.rule_generator = RuleGeneratorAgent(settings=self.settings)
+            self.pattern_detector = PatternDetectionAgent(settings=self.settings)
+        
+        # Ontology sync agent
+        self.ontology_sync = OntologySyncAgent(
+            sparql_store=sparql_store,
+            settings=self.settings
+        )
 
     async def ingest(
         self,
@@ -618,7 +737,7 @@ class IngestionOrchestrator:
         document_id: str,
         text: str,
     ) -> list[ExtractedClause]:
-        """Step 2: Clause extraction."""
+        """Step 2: Clause extraction with self-healing."""
         step = IngestionStep(step_name="clause_extraction", started_at=datetime.now())
         logger.info("=" * 60)
         logger.info(f"STEP 2: CLAUSE EXTRACTION - {document_id}")
@@ -626,10 +745,17 @@ class IngestionOrchestrator:
         logger.info("Calling LLM for clause identification... (this may take 2-5 minutes)")
         
         try:
-            extraction_result = await self.clause_agent.process({
-                "document_id": document_id,
-                "text": text,
-            })
+            # Use error recovery wrapper for self-healing
+            extraction_result = await self._execute_with_recovery(
+                self.clause_agent.process,
+                "clause_extraction",
+                {"document_id": document_id, "text": text}
+            )
+            
+            if extraction_result is None:
+                # Recovery failed, return empty list
+                logger.warning("Clause extraction failed after recovery attempts")
+                return []
             
             clauses = extraction_result.clauses
             result.clauses_extracted = len(clauses)
@@ -661,7 +787,7 @@ class IngestionOrchestrator:
         document_id: str,
         text: str,
     ) -> EntityExtractionResult | None:
-        """Step 3: Entity extraction."""
+        """Step 3: Entity extraction with self-healing."""
         step = IngestionStep(step_name="entity_extraction", started_at=datetime.now())
         logger.info("=" * 60)
         logger.info(f"STEP 3: ENTITY EXTRACTION - {document_id}")
@@ -669,10 +795,17 @@ class IngestionOrchestrator:
         logger.info("  Calling LLM... (this may take 2-3 minutes)")
         
         try:
-            entity_result = await self.entity_agent.process({
-                "document_id": document_id,
-                "text": text,
-            })
+            # Use error recovery wrapper for self-healing
+            entity_result = await self._execute_with_recovery(
+                self.entity_agent.process,
+                "entity_extraction",
+                {"document_id": document_id, "text": text}
+            )
+            
+            if entity_result is None:
+                # Recovery failed, return None
+                logger.warning("Entity extraction failed after recovery attempts")
+                return None
             
             entity_count = (
                 len(entity_result.parties) +
