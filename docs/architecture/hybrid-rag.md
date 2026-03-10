@@ -2,6 +2,8 @@
 
 This document explains the Hybrid Retrieval-Augmented Generation (RAG) system that combines knowledge graph queries with vector similarity search for intelligent contract analysis.
 
+**Deployment:** The Hybrid RAG pipeline runs inside the **Retrieval API** (port 8002). Queries reach it via the **API Gateway** (port 8080) at `/api/v1/query`.
+
 ## Overview
 
 The Hybrid RAG system provides:

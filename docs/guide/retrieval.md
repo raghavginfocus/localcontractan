@@ -2,6 +2,8 @@
 
 This guide explains how to query the Contract Knowledge Graph using the retrieval system.
 
+**Deployment:** Retrieval runs in the **Retrieval API** (port 8002). Access via **API Gateway** (port 8080) at `/api/v1/query`, or use `make api-query Q="..."` / `make query Q="..."`.
+
 ## Overview
 
 The retrieval system provides intelligent query processing that combines:

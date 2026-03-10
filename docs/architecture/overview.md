@@ -10,14 +10,44 @@ The system runs as **microservices** behind an API Gateway:
 - **Ingestion API** (port 8001) — Document processing, clause extraction, RDF generation
 - **Retrieval API** (port 8002) — Query processing, LangGraph orchestration, hybrid RAG
 
-All queries and ingestion requests go through the Gateway. See [README](../../README.md#system-architecture) for the full deployment diagram.
+All queries and ingestion requests go through the Gateway.
+
+```mermaid
+graph TB
+    subgraph "Client"
+        User[User / CLI / Scripts]
+    end
+
+    subgraph "API Gateway :8080"
+        GW[Gateway<br/>Unified Entry Point]
+    end
+
+    subgraph "Microservices"
+        IngAPI[Ingestion API :8001<br/>Document Processing]
+        RetAPI[Retrieval API :8002<br/>Query Processing]
+    end
+
+    subgraph "Storage"
+        Fuseki[(Fuseki :3030<br/>Knowledge Graph)]
+        Milvus[(Milvus :19530<br/>Vector Store)]
+    end
+
+    User -->|/api/v1/ingest/*| GW
+    User -->|/api/v1/query| GW
+    GW -->|ingest, upload, jobs| IngAPI
+    GW -->|query| RetAPI
+    IngAPI --> Fuseki
+    IngAPI --> Milvus
+    RetAPI --> Fuseki
+    RetAPI --> Milvus
+```
 
 ## System Architecture
 
 ```mermaid
 graph TB
     subgraph "User Interface"
-        API[REST API]
+        API[API Gateway :8080]
         CLI[CLI Tools]
         Eval[Evaluation Framework]
     end

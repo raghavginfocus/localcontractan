@@ -2,6 +2,8 @@
 
 Complete guide to ingesting contracts into the knowledge graph.
 
+**Deployment:** Ingestion runs in the **Ingestion API** (port 8001). Access via **API Gateway** (port 8080) at `/api/v1/ingest/upload` or `/api/v1/ingest/async`, or use `make ingest` (runs inside the ingestion container).
+
 ## Overview
 
 The ingestion pipeline processes contracts through multiple specialized agents:
