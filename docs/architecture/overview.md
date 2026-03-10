@@ -2,6 +2,16 @@
 
 Contract-Jena is built on a multi-layered architecture combining semantic knowledge graphs, vector databases, and LLM-powered agents with iterative refinement.
 
+## Deployment Architecture
+
+The system runs as **microservices** behind an API Gateway:
+
+- **API Gateway** (port 8080) — Unified entry point; routes `/api/v1/ingest/*` to Ingestion API and `/api/v1/query` to Retrieval API
+- **Ingestion API** (port 8001) — Document processing, clause extraction, RDF generation
+- **Retrieval API** (port 8002) — Query processing, LangGraph orchestration, hybrid RAG
+
+All queries and ingestion requests go through the Gateway. See [README](../../README.md#system-architecture) for the full deployment diagram.
+
 ## System Architecture
 
 ```mermaid

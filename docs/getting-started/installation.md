@@ -199,7 +199,7 @@ make services-up-ui
 
 Access UIs:
 - **Fuseki UI**: http://localhost:3030
-- **Attu (Milvus)**: http://localhost:8080
+- **Attu (Milvus)**: http://localhost:8081
 - **MinIO Console**: http://localhost:9001
 - **Phoenix**: http://localhost:6006
 

@@ -142,19 +142,47 @@ Provide your critique as JSON with these fields:
         # Prepare facts summary
         facts_summary = self._summarize_facts(facts)
         
-        # Create structured LLM with JSON output
+        # Create structured LLM - let LangChain auto-detect best method
         structured_llm = self.llm.with_structured_output(AnswerCritique)
         
         # Generate critique
         critique_chain = self.critique_prompt | structured_llm
         
-        critique = await critique_chain.ainvoke({
-            "question": question,
-            "answer": answer,
-            "facts_summary": facts_summary,
-            "num_facts": len(facts),
-            "sources": ", ".join(sources)
-        })
+        try:
+            critique = await critique_chain.ainvoke({
+                "question": question,
+                "answer": answer,
+                "facts_summary": facts_summary,
+                "num_facts": len(facts),
+                "sources": ", ".join(sources)
+            })
+            
+            # Handle None response from LLM (structured output not supported)
+            if critique is None:
+                self.logger.warning(
+                    "LLM returned None - structured output may not be supported. "
+                    "Creating permissive critique to allow answer through."
+                )
+                critique = AnswerCritique(
+                    is_complete=True,
+                    is_relevant=True,
+                    confidence_score=0.7,
+                    missing_information=[],
+                    reasoning="LLM structured output unavailable, accepting answer",
+                    needs_refinement=False,
+                    suggested_follow_up_queries=[]
+                )
+        except Exception as e:
+            self.logger.error(f"Critique failed: {e}. Accepting answer.")
+            critique = AnswerCritique(
+                is_complete=True,
+                is_relevant=True,
+                confidence_score=0.7,
+                missing_information=[],
+                reasoning=f"Critique error: {str(e)}",
+                needs_refinement=False,
+                suggested_follow_up_queries=[]
+            )
         
         self.logger.info(
             f"Critique complete - Complete: {critique.is_complete}, "

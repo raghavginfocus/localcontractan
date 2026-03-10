@@ -35,14 +35,27 @@ class WatsonXProvider(LLMProvider):
         - watsonx_url (WATSONX_URL)
         """
         temperature = kwargs.get("temperature", 0.1)
+        max_tokens = kwargs.get("max_tokens", 4096)
+        
+        # Base parameters (without temperature to avoid duplication)
+        params = {
+            "model_id": settings.watsonx_model_id,
+            "project_id": settings.watsonx_project_id,
+            "url": settings.watsonx_url,
+            "apikey": settings.watsonx_api_key,
+            "max_tokens": max_tokens,
+        }
+        
+        # Add model-specific parameters for better structured output
+        # Temperature goes here to avoid duplication error
+        params["params"] = {
+            "decoding_method": "greedy",
+            "max_new_tokens": max_tokens,
+            "temperature": temperature,
+            "repetition_penalty": 1.0,
+        }
 
-        return ChatWatsonx(
-            model_id=settings.watsonx_model_id,
-            project_id=settings.watsonx_project_id,
-            url=settings.watsonx_url,
-            apikey=settings.watsonx_api_key,
-            temperature=temperature,
-        )
+        return ChatWatsonx(**params)
 
     def validate_config(self, settings: Settings) -> bool:
         """
@@ -64,6 +77,8 @@ class WatsonXProvider(LLMProvider):
             "supports_function_calling": True,  # Depends on model
             "max_tokens": 4096,  # Model-dependent
             "supported_models": [
+                "openai/gpt-oss-120b",
+                "meta-llama/llama-3-3-70b-instruct",
                 "meta-llama/llama-3-70b-instruct",
                 "meta-llama/llama-3-8b-instruct",
                 "ibm/granite-13b-instruct-v2",
