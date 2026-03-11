@@ -24,6 +24,14 @@ class ExtractedDocument(BaseModel):
     text: str = Field(description="Extracted text content")
     page_count: int = Field(default=1, description="Number of pages")
     metadata: dict[str, Any] = Field(default_factory=dict, description="Document metadata")
+    sections: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description="Structured sections from DocTags preprocessing (Docling pipeline only)",
+    )
+    structural_hints: dict[str, Any] = Field(
+        default_factory=dict,
+        description="High-level structural hints: section_titles, bold_terms, table_summaries",
+    )
 
 
 class DocumentIngestionAgent(BaseAgent):

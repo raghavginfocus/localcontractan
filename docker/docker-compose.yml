@@ -195,6 +195,12 @@ services:
       - PHOENIX_COLLECTOR_ENDPOINT=http://phoenix:4317
       - PHOENIX_ENABLED=true
       - PYTHONUNBUFFERED=1
+      # Object storage (MinIO / IBM COS - no AWS S3)
+      - OBJECT_STORAGE_ENDPOINT=http://minio:9000
+      - OBJECT_STORAGE_ACCESS_KEY=minioadmin
+      - OBJECT_STORAGE_SECRET_KEY=minioadmin
+      - OBJECT_STORAGE_BUCKET=procurement-contracts
+      - OBJECT_STORAGE_REGION=us-east-1
     volumes:
       - ../agents/logs:/app/logs
       - ../agents/checkpoints:/app/checkpoints
@@ -205,6 +211,7 @@ services:
     depends_on:
       - fuseki
       - milvus
+      - minio
       - phoenix
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8001/health"]

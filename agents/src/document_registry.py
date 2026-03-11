@@ -207,6 +207,84 @@ class DocumentRegistry:
                 hasher.update(chunk)
         
         return hasher.hexdigest()
+
+    @staticmethod
+    def compute_identity_hash(identity: str) -> str:
+        """Compute SHA256 hash for a stable identity string (e.g., key+etag)."""
+        return hashlib.sha256(identity.encode("utf-8")).hexdigest()
+
+    def register_by_hash(
+        self,
+        *,
+        content_hash: str,
+        filename: str,
+        document_id: str,
+        status: ProcessingStatus = ProcessingStatus.COMPLETED,
+        metadata: dict[str, Any] | None = None,
+    ) -> DocumentRecord:
+        """Register a processed document when you already have a hash."""
+        record = DocumentRecord(
+            content_hash=content_hash,
+            document_id=document_id,
+            filename=filename,
+            status=status,
+            processed_at=datetime.now(),
+            metadata=metadata or {},
+        )
+
+        if self.backend == "redis":
+            self.redis_client.set(
+                f"doc:{content_hash}",
+                json.dumps(record.to_dict()),
+            )
+            self.redis_client.set(f"docid:{document_id}", content_hash)
+
+        elif self.backend == "sqlite":
+            import sqlite3
+            conn = sqlite3.connect(str(self.db_path))
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO documents
+                (content_hash, document_id, filename, status, processed_at, metadata)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    content_hash,
+                    document_id,
+                    filename,
+                    status.value,
+                    record.processed_at.isoformat(),
+                    json.dumps(metadata or {}),
+                ),
+            )
+            conn.commit()
+            conn.close()
+
+        elif self.backend == "fuseki":
+            update = f"""
+            PREFIX reg: <http://procurement.kg/registry#>
+            PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+            INSERT DATA {{
+                GRAPH <http://procurement.kg/registry#documents> {{
+                    reg:doc_{content_hash[:16]}
+                        reg:contentHash "{content_hash}" ;
+                        reg:documentId "{document_id}" ;
+                        reg:filename "{filename}" ;
+                        reg:status "{status.value}" ;
+                        reg:processedAt "{record.processed_at.isoformat()}"^^xsd:dateTime ;
+                        reg:metadata "{json.dumps(metadata or {})}" .
+                }}
+            }}
+            """
+            self.sparql_store.execute_update(update)
+
+        logger.info(
+            "Registered document by hash",
+            document_id=document_id,
+            status=status.value,
+            backend=self.backend,
+        )
+        return record
     
     def is_processed(
         self,

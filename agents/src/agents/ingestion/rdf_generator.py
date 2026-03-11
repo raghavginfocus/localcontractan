@@ -239,6 +239,17 @@ Return only the JSON object with extracted values. Extract EVERYTHING you can fi
                 self._add_risk(g, contract_uri, risk)
                 entity_counts["Risk"] += 1
         
+        # Add document structure triples from DocTags sections (if available)
+        doc_sections = input_data.get("sections", [])
+        if doc_sections:
+            section_triples = self._add_document_sections(g, contract_uri, doc_sections)
+            entity_counts["Section"] = len(doc_sections)
+            self.logger.info(
+                "Added document structure triples",
+                sections=len(doc_sections),
+                triples=section_triples,
+            )
+        
         # Serialize to Turtle
         turtle = g.serialize(format="turtle")
         triple_count = len(g)
@@ -367,6 +378,20 @@ Return only the JSON object with extracted values. Extract EVERYTHING you can fi
         
         # Link to contract
         g.add((contract_uri, PROC.hasClause, clause_uri))
+        
+        # DocTags section metadata (Docling pipeline enrichment)
+        sec_title = getattr(clause, "section_title", "") or ""
+        if sec_title:
+            g.add((clause_uri, PROC.sectionTitle, Literal(sec_title)))
+        has_table = getattr(clause, "has_table", False)
+        if has_table:
+            g.add((clause_uri, PROC.hasTable, Literal(True, datatype=XSD.boolean)))
+        page_range = getattr(clause, "page_range", "") or ""
+        if page_range:
+            g.add((clause_uri, PROC.pageRange, Literal(page_range)))
+        source_section = getattr(clause, "source_section_id", "") or ""
+        if source_section:
+            g.add((clause_uri, PROC.sourceSectionId, Literal(source_section)))
         
         # Extract and add structured attributes
         await self._add_clause_attributes(g, clause_uri, clause)
@@ -620,6 +645,47 @@ Return only the JSON object with extracted values. Extract EVERYTHING you can fi
         g.add((contract_uri, PROC.hasRisk, risk_uri))
         
         return risk_uri
+
+    def _add_document_sections(
+        self,
+        g: Graph,
+        contract_uri: URIRef,
+        sections: list[dict],
+    ) -> int:
+        """
+        Add document structure triples from DocTags sections.
+
+        Creates proc:DocumentSection entities linked to the contract,
+        enabling SPARQL queries like "list all sections", "find sections with tables", etc.
+
+        Returns the number of triples added.
+        """
+        before = len(g)
+        for sec in sections:
+            sec_id = sec.get("section_id", "")
+            if not sec_id:
+                continue
+            sec_uri = CONTRACT[sec_id]
+            g.add((sec_uri, RDF.type, PROC.DocumentSection))
+            title = sec.get("title", "")
+            if title:
+                g.add((sec_uri, RDFS.label, Literal(title)))
+                g.add((sec_uri, PROC.sectionTitle, Literal(title)))
+            level = sec.get("level", 0)
+            if level:
+                g.add((sec_uri, PROC.sectionLevel, Literal(level, datatype=XSD.integer)))
+            page_range = sec.get("page_range", "")
+            if page_range:
+                g.add((sec_uri, PROC.pageRange, Literal(page_range)))
+            tables = sec.get("tables", [])
+            if tables:
+                g.add((sec_uri, PROC.hasTable, Literal(True, datatype=XSD.boolean)))
+                g.add((sec_uri, PROC.tableCount, Literal(len(tables), datatype=XSD.integer)))
+            char_count = sum(len(p) for p in sec.get("paragraphs", []))
+            if char_count:
+                g.add((sec_uri, PROC.charCount, Literal(char_count, datatype=XSD.integer)))
+            g.add((contract_uri, PROC.hasSection, sec_uri))
+        return len(g) - before
 
     def generate_from_text(
         self,

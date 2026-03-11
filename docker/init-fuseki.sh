@@ -28,11 +28,13 @@ echo "[SUCCESS] Fuseki is ready!"
 echo ""
 
 # Check if dataset already exists
-echo "[INFO] Checking for existing dataset..."
-DATASET_EXISTS=$(curl -s -u admin:${ADMIN_PASSWORD:-admin123} \
+echo "[INFO] Checking for existing datasets..."
+DATASET_CONTRACTS=$(curl -s -u admin:${ADMIN_PASSWORD:-admin123} \
     http://localhost:3030/$/datasets 2>/dev/null | grep -c '"ds.name" : "/contracts"' || true)
+DATASET_DOCLING=$(curl -s -u admin:${ADMIN_PASSWORD:-admin123} \
+    http://localhost:3030/$/datasets 2>/dev/null | grep -c '"ds.name" : "/contracts_docling"' || true)
 
-if [ "$DATASET_EXISTS" -gt 0 ]; then
+if [ "$DATASET_CONTRACTS" -gt 0 ]; then
     echo "[SUCCESS] Dataset 'contracts' already exists (skipping creation)"
 else
     echo "[INFO] Creating 'contracts' dataset with TDB2 backend..."
@@ -49,6 +51,23 @@ else
     else
         echo "[WARNING] Dataset creation returned status: $HTTP_CODE"
         echo "          (This may be normal if dataset already exists)"
+    fi
+fi
+
+# Create contracts_docling dataset (for Docling pipeline)
+if [ "$DATASET_DOCLING" -gt 0 ]; then
+    echo "[SUCCESS] Dataset 'contracts_docling' already exists (skipping creation)"
+else
+    echo "[INFO] Creating 'contracts_docling' dataset with TDB2 backend..."
+    RESPONSE=$(curl -s -w "\n%{http_code}" -X POST http://localhost:3030/$/datasets \
+        -u admin:${ADMIN_PASSWORD:-admin123} \
+        -H "Content-Type: application/x-www-form-urlencoded" \
+        -d "dbName=contracts_docling&dbType=tdb2")
+    HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+    if [ "$HTTP_CODE" = "200" ] || [ "$HTTP_CODE" = "201" ]; then
+        echo "[SUCCESS] Dataset 'contracts_docling' created successfully"
+    else
+        echo "[WARNING] contracts_docling creation returned status: $HTTP_CODE"
     fi
 fi
 
@@ -92,6 +111,21 @@ if [ -f /staging/ontology/procurement.owl ]; then
             echo "[WARNING] Ontology load returned status: $HTTP_CODE"
         fi
     fi
+
+    # Load ontology into contracts_docling (same schema for Docling pipeline)
+    TRIPLE_COUNT_DOCLING=$(curl -s -u admin:${ADMIN_PASSWORD:-admin123} \
+        "http://localhost:3030/contracts_docling/query" \
+        -H "Accept: application/sparql-results+json" \
+        --data-urlencode "query=SELECT (COUNT(*) as ?count) WHERE { ?s ?p ?o }" \
+        2>/dev/null | grep -o '"value":"[0-9]*"' | head -1 | grep -o '[0-9]*' || echo "0")
+    if [ "$TRIPLE_COUNT_DOCLING" -lt 100 ]; then
+        echo "[INFO] Loading ontology into contracts_docling..."
+        curl -s -X POST http://localhost:3030/contracts_docling/data \
+            -u admin:${ADMIN_PASSWORD:-admin123} \
+            -H "Content-Type: application/rdf+xml" \
+            --data-binary @/staging/ontology/procurement.owl > /dev/null 2>&1 || true
+        echo "[SUCCESS] Ontology loaded into contracts_docling"
+    fi
 else
     echo "[WARNING] Ontology file not found at /staging/ontology/procurement.owl"
 fi
@@ -114,7 +148,7 @@ echo "=========================================="
 echo ""
 echo "Service Information:"
 echo "  - Fuseki UI:     http://localhost:3030"
-echo "  - Dataset:       contracts"
+echo "  - Datasets:      contracts, contracts_docling"
 echo "  - Query:         http://localhost:3030/contracts/query"
 echo "  - Update:        http://localhost:3030/contracts/update"
 echo "  - Credentials:   admin / ${ADMIN_PASSWORD:-admin123}"

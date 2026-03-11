@@ -26,11 +26,13 @@ RUN uv sync --frozen --no-dev
 # Stage 2: Runtime - Minimal production image
 FROM python:3.11-slim
 
-# Install runtime system dependencies
+# Install runtime system dependencies (libgl1 for Docling/OpenCV)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     tesseract-ocr \
     poppler-utils \
+    libgl1 \
+    libglib2.0-0 \
     && rm -rf /var/lib/apt/lists/*
 
 # Create non-root user for security

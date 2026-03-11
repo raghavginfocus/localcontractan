@@ -168,6 +168,51 @@ class Settings(BaseSettings):
         description="Maximum file size in MB",
     )
 
+    # Ingestion/Retrieval Switchover (legacy vs docling pipeline)
+    ingestion_source: str = Field(
+        default="legacy",
+        description="Ingestion pipeline: legacy (PyPDF2) or docling",
+    )
+    retrieval_fuseki_dataset: str = Field(
+        default="contracts",
+        description="Fuseki dataset for retrieval reads (ingestion uses fuseki_dataset)",
+    )
+    retrieval_milvus_collection: str = Field(
+        default="contract_clauses_v2",
+        description="Milvus collection for retrieval reads (ingestion uses milvus_collection_v2)",
+    )
+    # Docling pipeline targets (when ingestion_source=docling)
+    docling_fuseki_dataset: str = Field(
+        default="contracts_docling",
+        description="Fuseki dataset for Docling ingestion",
+    )
+    docling_milvus_collection: str = Field(
+        default="contract_clauses_docling",
+        description="Milvus collection for Docling ingestion",
+    )
+
+    # Object Storage (MinIO, IBM COS - S3-compatible)
+    object_storage_endpoint: str = Field(
+        default="http://minio:9000",
+        description="Object storage endpoint (MinIO: http://minio:9000, IBM COS: https://s3.region.cloud-object-storage.appdomain.cloud)",
+    )
+    object_storage_access_key: str = Field(
+        default="minioadmin",
+        description="Object storage access key",
+    )
+    object_storage_secret_key: str = Field(
+        default="minioadmin",
+        description="Object storage secret key",
+    )
+    object_storage_bucket: str = Field(
+        default="procurement-contracts",
+        description="Object storage bucket name",
+    )
+    object_storage_region: str = Field(
+        default="us-east-1",
+        description="Object storage region (MinIO: us-east-1; IBM COS: e.g. us-south)",
+    )
+
     # Logging
     log_level: str = Field(
         default="INFO",

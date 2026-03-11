@@ -147,17 +147,38 @@ class VectorIndexAgent(BaseAgent):
                         f"{clause_id}"
                     )
                 
+                # Extract DocTags metadata from clause (populated by Docling pipeline)
+                if isinstance(clause, ExtractedClause):
+                    sec_title = getattr(clause, "section_title", "") or ""
+                    has_table_val = "true" if getattr(clause, "has_table", False) else "false"
+                    page_range = getattr(clause, "page_range", "") or ""
+                    source_section = getattr(clause, "source_section_id", "") or ""
+                else:
+                    sec_title = clause.get("section_title", "")
+                    has_table_val = "true" if clause.get("has_table", False) else "false"
+                    page_range = clause.get("page_range", "")
+                    source_section = clause.get("source_section_id", "")
+
+                source_pipeline = (
+                    "docling"
+                    if sec_title or source_section
+                    else input_data.get("source_pipeline", "legacy")
+                )
+
                 indexable_clauses.append({
                     "clause_id": clause_id,
                     "contract_id": contract_id,
                     "clause_type": clause_type,
                     "text": text,
                     "summary": summary,
-                    # Store as JSON strings to fit VARCHAR fields cleanly
                     "key_points": json.dumps(key_points),
                     "structured_summary": json.dumps(structured_summary),
                     "rdf_uri": rdf_uri,
                     "graph_uri": graph_uri,
+                    "section_title": sec_title,
+                    "has_table": has_table_val,
+                    "page_range": page_range,
+                    "source_pipeline": source_pipeline,
                 })
             
             # Batch index

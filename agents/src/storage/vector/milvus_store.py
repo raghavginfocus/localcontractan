@@ -196,6 +196,30 @@ class MilvusStore(VectorStore):
                 description="Named graph URI for isolation",
             ),
             FieldSchema(
+                name="section_title",
+                dtype=DataType.VARCHAR,
+                max_length=512,
+                description="DocTags section heading (empty for legacy pipeline)",
+            ),
+            FieldSchema(
+                name="has_table",
+                dtype=DataType.VARCHAR,
+                max_length=8,
+                description="'true'/'false' — clause contains a table (from DocTags)",
+            ),
+            FieldSchema(
+                name="page_range",
+                dtype=DataType.VARCHAR,
+                max_length=32,
+                description="Source page range e.g. '5-6' (from DocTags provenance)",
+            ),
+            FieldSchema(
+                name="source_pipeline",
+                dtype=DataType.VARCHAR,
+                max_length=16,
+                description="'docling' or 'legacy' — which ingestion pipeline produced this",
+            ),
+            FieldSchema(
                 name="embedding",
                 dtype=DataType.FLOAT_VECTOR,
                 dim=self.embedding_dim,
@@ -276,17 +300,22 @@ class MilvusStore(VectorStore):
         }
 
         # Execute search on summary-based embedding
+        desired_fields = [
+            "clause_id", "contract_id", "clause_type",
+            "text", "summary", "key_points", "structured_summary",
+            "rdf_uri", "graph_uri",
+            "section_title", "has_table", "page_range", "source_pipeline",
+        ]
+        existing_fields = {f.name for f in self.collection.schema.fields}
+        output_fields = [f for f in desired_fields if f in existing_fields]
+
         results = self.collection.search(
             data=[query_embedding],
             anns_field="embedding",
             param=search_params,
             limit=top_k,
             expr=filter_expr,
-            output_fields=[
-                "clause_id", "contract_id", "clause_type",
-                "text", "summary", "key_points", "structured_summary",
-                "rdf_uri", "graph_uri",
-            ],
+            output_fields=output_fields,
         )
 
         # Format results
@@ -303,6 +332,10 @@ class MilvusStore(VectorStore):
                     "structured_summary": hit.entity.get("structured_summary"),
                     "rdf_uri": hit.entity.get("rdf_uri"),
                     "graph_uri": hit.entity.get("graph_uri"),
+                    "section_title": hit.entity.get("section_title", ""),
+                    "has_table": hit.entity.get("has_table", ""),
+                    "page_range": hit.entity.get("page_range", ""),
+                    "source_pipeline": hit.entity.get("source_pipeline", ""),
                     "score": hit.score,
                 })
 
@@ -332,6 +365,10 @@ class MilvusStore(VectorStore):
         structured_summaries = []
         rdf_uris = []
         graph_uris = []
+        section_titles = []
+        has_tables = []
+        page_ranges = []
+        source_pipelines = []
         embeddings = []
 
         # Build embedding text: summary + key metadata (optimized for semantic search)
@@ -341,13 +378,15 @@ class MilvusStore(VectorStore):
             clause_type = clause.get("clause_type", "")
             key_points_str = clause.get("key_points", "")
             structured_str = clause.get("structured_summary", "")
+            sec_title = clause.get("section_title", "")
             
-            # Build rich embedding text from summary + metadata
             embedding_parts = [f"[{clause_type}]"]
+            # Include section title for better semantic context
+            if sec_title:
+                embedding_parts.append(f"Section: {sec_title}")
             if summary:
                 embedding_parts.append(f"Summary: {summary}")
             if key_points_str:
-                # Parse key points if JSON, otherwise use as-is
                 try:
                     import json
                     kp_list = json.loads(key_points_str) if key_points_str.startswith("[") else [key_points_str]
@@ -358,7 +397,6 @@ class MilvusStore(VectorStore):
                 try:
                     import json
                     struct = json.loads(structured_str) if structured_str.startswith("{") else {}
-                    # Add key structured fields to embedding
                     for key in ["notice_period_days", "payment_terms_days", "risk_level"]:
                         if key in struct and struct[key]:
                             embedding_parts.append(f"{key}: {struct[key]}")
@@ -385,12 +423,18 @@ class MilvusStore(VectorStore):
             structured_summaries.append((clause.get("structured_summary") or "")[:16383])
             rdf_uris.append(clause.get("rdf_uri", ""))
             graph_uris.append(clause.get("graph_uri", ""))
+            section_titles.append((clause.get("section_title") or "")[:511])
+            has_tables.append(clause.get("has_table", "false"))
+            page_ranges.append((clause.get("page_range") or "")[:31])
+            source_pipelines.append((clause.get("source_pipeline") or "legacy")[:15])
             embeddings.append(all_embeddings[i].tolist())
 
         data = [
             ids, clause_ids, contract_ids, clause_types,
             texts, summaries, key_points_list, structured_summaries,
-            rdf_uris, graph_uris, embeddings
+            rdf_uris, graph_uris,
+            section_titles, has_tables, page_ranges, source_pipelines,
+            embeddings,
         ]
 
         self.collection.insert(data)

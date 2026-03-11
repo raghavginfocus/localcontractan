@@ -196,9 +196,9 @@ async def ingest_document(request: IngestionRequest):
         
         return IngestionResponse(
             status="success",
-            document_id=result.get("document_id", "unknown"),
+            document_id=getattr(result, "document_id", "unknown"),
             message="Document ingested successfully",
-            metadata=result
+            metadata=result.model_dump(mode="json") if hasattr(result, "model_dump") else result,
         )
         
     except FileNotFoundError:
@@ -251,9 +251,9 @@ async def upload_and_ingest(
             
             return IngestionResponse(
                 status="success",
-                document_id=result.get("document_id", "unknown"),
+                document_id=getattr(result, "document_id", "unknown"),
                 message=f"File '{file.filename}' ingested successfully",
-                metadata=result
+                metadata=result.model_dump(mode="json") if hasattr(result, "model_dump") else result,
             )
         finally:
             # Clean up temp file
@@ -405,9 +405,214 @@ async def run_ingestion_job(job_id: str, file_path: str, override: bool = False)
         logger.info(f"Starting ingestion job {job_id}: {file_path}")
         
         path = Path(file_path)
+        is_minio_prefix = file_path.startswith("minio://")
         
         # Check if path is a directory or file
-        if path.is_dir():
+        if is_minio_prefix:
+            # MinIO prefix ingestion (Docling pipeline only)
+            from config import get_settings
+            from storage.object_storage import get_object_storage_from_config
+            from document_registry import DocumentRegistry, ProcessingStatus
+            import json
+
+            settings = get_settings()
+            if settings.ingestion_source != "docling":
+                raise ValueError(
+                    "minio:// ingestion requires INGESTION_SOURCE=docling"
+                )
+
+            storage = get_object_storage_from_config()
+            if storage is None:
+                raise ValueError(
+                    "Object storage is not configured; cannot read minio:// inputs"
+                )
+
+            # Example: minio://input/examples
+            # We treat everything after scheme as object key prefix.
+            prefix = file_path[len("minio://") :].lstrip("/")
+            if prefix and not prefix.endswith("/"):
+                prefix = prefix + "/"
+
+            logger.info(
+                "Processing MinIO prefix recursively",
+                prefix=prefix,
+            )
+
+            keys = storage.list_objects(prefix)
+            doc_keys = [
+                k
+                for k in keys
+                if k.lower().endswith((".pdf", ".docx", ".txt", ".md"))
+            ]
+
+            if not doc_keys:
+                job_manager.mark_completed(job_id, {
+                    "status": "success",
+                    "message": "No documents found under MinIO prefix",
+                    "files_processed": 0,
+                    "prefix": prefix,
+                })
+                return
+
+            registry = DocumentRegistry(
+                backend=settings.document_registry_backend,
+                redis_url=settings.document_registry_redis_url,
+                settings=settings,
+            )
+
+            # Write initial manifest for this job to object storage so we have a
+            # durable record of which keys were discovered.
+            manifest_prefix = "ingestion_manifests"
+            manifest_key = f"{manifest_prefix}/{job_id}.json"
+            manifest = {
+                "job_id": job_id,
+                "prefix": prefix,
+                "created_at": job_manager.get_job(job_id).created_at.isoformat(),
+                "items": [
+                    {"key": k, "status": "discovered"}
+                    for k in doc_keys
+                ],
+            }
+            try:
+                storage.upload(
+                    key=manifest_key,
+                    data=json.dumps(manifest, indent=2).encode("utf-8"),
+                    content_type="application/json",
+                )
+            except Exception as e:
+                logger.warning(
+                    "minio_manifest_write_failed",
+                    error=str(e),
+                    key=manifest_key,
+                )
+
+            # Download to a local cache so downstream agents can read as files.
+            cache_root = Path("/app/data/minio_input_cache") / prefix.rstrip("/")
+            cache_root.mkdir(parents=True, exist_ok=True)
+
+            local_files: list[str] = []
+            skipped_unchanged = 0
+            for key in doc_keys:
+                meta = storage.get_object_metadata(key)
+                etag = meta.get("etag", "")
+                identity = f"{storage.bucket}:{key}:{etag}"
+                identity_hash = registry.compute_identity_hash(identity)
+                already, rec = registry.is_processed(content_hash=identity_hash)
+                if already and rec and rec.status == ProcessingStatus.COMPLETED and not override:
+                    skipped_unchanged += 1
+                    continue
+
+                rel = key[len(prefix):] if key.startswith(prefix) else key
+                local_path = cache_root / rel
+                local_path.parent.mkdir(parents=True, exist_ok=True)
+                if (not local_path.exists()) or override:
+                    local_path.write_bytes(storage.download(key))
+                local_files.append(str(local_path))
+
+            if not local_files:
+                job_manager.mark_completed(job_id, {
+                    "status": "success",
+                    "message": "All documents under prefix already processed (etag unchanged)",
+                    "files_processed": 0,
+                    "prefix": prefix,
+                    "skipped_unchanged": skipped_unchanged,
+                })
+                # Update manifest to mark all items as skipped_unchanged
+                try:
+                    manifest["items"] = [
+                        {
+                            "key": k,
+                            "status": "skipped_unchanged",
+                        }
+                        for k in doc_keys
+                    ]
+                    storage.upload(
+                        key=manifest_key,
+                        data=json.dumps(manifest, indent=2).encode("utf-8"),
+                        content_type="application/json",
+                    )
+                except Exception as e:
+                    logger.warning(
+                        "minio_manifest_update_failed",
+                        error=str(e),
+                        key=manifest_key,
+                    )
+                return
+
+            items = [{"file_path": f} for f in local_files]
+            ingestion_results = await orchestrator.ingest_batch(
+                items, max_concurrent=5,
+            )
+
+            # Register completion by (key, etag) identity so future runs can skip
+            # without downloading.
+            # Note: this is best-effort; failures here shouldn't fail the whole job.
+            try:
+                # Map local cache path back to MinIO key
+                cache_prefix = str(cache_root) + "/"
+                item_status_by_key: dict[str, str] = {}
+                for r, local_path in zip(ingestion_results, local_files):
+                    rel = local_path.replace(cache_prefix, "")
+                    key = prefix + rel
+                    meta = storage.get_object_metadata(key)
+                    etag = meta.get("etag", "")
+                    identity = f"{storage.bucket}:{key}:{etag}"
+                    identity_hash = registry.compute_identity_hash(identity)
+                    doc_id = getattr(r, "document_id", None) or getattr(r, "get", lambda _k, _d=None: None)("document_id") or "unknown"
+                    ok = getattr(r, "success", None)
+                    status = ProcessingStatus.COMPLETED if ok else ProcessingStatus.FAILED
+                    item_status_by_key[key] = status.value
+                    registry.register_by_hash(
+                        content_hash=identity_hash,
+                        filename=Path(local_path).name,
+                        document_id=str(doc_id),
+                        status=status,
+                        metadata={
+                            "minio_key": key,
+                            "etag": etag,
+                            "size": meta.get("size", ""),
+                            "last_modified": meta.get("last_modified", ""),
+                            "prefix": prefix,
+                        },
+                    )
+                # Update manifest with per-key status
+                try:
+                    manifest["items"] = [
+                        {
+                            "key": k,
+                            "status": item_status_by_key.get(k, "skipped_unchanged")
+                            if k in item_status_by_key
+                            else "skipped_unchanged",
+                        }
+                        for k in doc_keys
+                    ]
+                    storage.upload(
+                        key=manifest_key,
+                        data=json.dumps(manifest, indent=2).encode("utf-8"),
+                        content_type="application/json",
+                    )
+                except Exception as e:
+                    logger.warning(
+                        "minio_manifest_update_failed",
+                        error=str(e),
+                        key=manifest_key,
+                    )
+            except Exception as _e:
+                logger.warning("minio_registry_update_failed", error=str(_e))
+
+            result = {
+                "status": "success",
+                "message": f"Processed {len(ingestion_results)} files from MinIO",
+                "files_processed": len(ingestion_results),
+                "prefix": prefix,
+                "skipped_unchanged": skipped_unchanged,
+                "results": [
+                    r.model_dump() if hasattr(r, "model_dump") else r
+                    for r in ingestion_results
+                ],
+            }
+
+        elif path.is_dir():
             # Directory: scan and process all files
             logger.info(f"Processing directory: {file_path}")
             

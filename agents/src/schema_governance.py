@@ -21,6 +21,7 @@ from pydantic import BaseModel, Field
 
 from config import get_settings
 from logger import get_module_logger
+from storage.object_storage import get_object_storage_from_config
 
 logger = get_module_logger(__name__)
 
@@ -73,6 +74,50 @@ class SchemaGovernance:
         self.version_dir.mkdir(parents=True, exist_ok=True)
         self.logger = logger.bind(component="SchemaGovernance")
         self.PROC = Namespace(self.settings.procurement_namespace)
+        self._latest_pointer_name = "latest.json"
+
+    def _update_latest_pointer(
+        self,
+        version: SchemaVersion,
+        storage,
+        prefix_root: str = "schema_versions",
+    ) -> None:
+        """
+        Update the pointer to the latest schema version.
+
+        Writes:
+        - Local file: version_dir/latest.json
+        - MinIO object: schema_versions/latest.json (best effort)
+        """
+        latest_data = {
+            "version_id": version.version_id,
+            "timestamp": version.timestamp.isoformat(),
+            "description": version.description,
+        }
+        # Local pointer
+        latest_path = self.version_dir / self._latest_pointer_name
+        try:
+            with open(latest_path, "w", encoding="utf-8") as f:
+                json.dump(latest_data, f, indent=2)
+        except Exception as e:
+            self.logger.warning(
+                "Failed to write local latest schema pointer",
+                error=str(e),
+            )
+
+        # Remote pointer (object storage)
+        try:
+            if storage:
+                storage.upload(
+                    key=f"{prefix_root}/{self._latest_pointer_name}",
+                    data=json.dumps(latest_data, indent=2).encode("utf-8"),
+                    content_type="application/json",
+                )
+        except Exception as e:
+            self.logger.warning(
+                "Failed to upload latest schema pointer to object storage",
+                error=str(e),
+            )
     
     def create_version(
         self,
@@ -138,6 +183,40 @@ class SchemaGovernance:
         metadata_path = version_path / "metadata.json"
         with open(metadata_path, "w") as f:
             json.dump(version.model_dump(mode="json"), f, indent=2, default=str)
+
+        # Best-effort: also persist schema version bundle to object storage (MinIO/COS)
+        # so schema history survives container restarts in production, and update
+        # the latest-version pointer.
+        try:
+            storage = get_object_storage_from_config()
+            if storage:
+                prefix = f"schema_versions/{version_id}"
+                storage.upload(
+                    key=f"{prefix}/metadata.json",
+                    data=metadata_path.read_bytes(),
+                    content_type="application/json",
+                )
+                for fp in copied_ontology + copied_rules + copied_shacl:
+                    p = Path(fp)
+                    if p.exists():
+                        storage.upload(
+                            key=f"{prefix}/{p.name}",
+                            data=p.read_bytes(),
+                            content_type="text/plain",
+                        )
+                # Update latest pointer after successful upload
+                self._update_latest_pointer(version, storage, prefix_root="schema_versions")
+                self.logger.info(
+                    "Schema version uploaded to object storage",
+                    version_id=version_id,
+                    prefix=prefix,
+                )
+        except Exception as e:
+            self.logger.warning(
+                "Failed to upload schema version to object storage",
+                version_id=version_id,
+                error=str(e),
+            )
         
         self.logger.info(
             "Schema version created",

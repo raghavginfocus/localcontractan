@@ -41,6 +41,22 @@ class ExtractedClause(BaseModel):
     attributes: dict[str, Any] = Field(
         default_factory=dict, description="Extracted attributes"
     )
+    section_title: str = Field(
+        default="",
+        description="DocTags section heading this clause was found under",
+    )
+    has_table: bool = Field(
+        default=False,
+        description="Whether this clause contains a table (from DocTags)",
+    )
+    page_range: str = Field(
+        default="",
+        description="Source page range from DocTags provenance (e.g. '5-6')",
+    )
+    source_section_id: str = Field(
+        default="",
+        description="DocTags section ID for traceability",
+    )
     
     @field_validator("clause_id", mode="before")
     @classmethod
@@ -119,8 +135,8 @@ class ClauseExtractionAgent(BaseAgent):
     - jurisdiction: Governing jurisdiction
     """
 
-    EXTRACTION_PROMPT = ChatPromptTemplate.from_messages([
-        ("system", """You are an expert legal analyst specializing in contract analysis.
+    # Shared system instructions for clause extraction (used by both prompts)
+    _CLAUSE_EXTRACTION_INSTRUCTIONS = """You are an expert legal analyst specializing in contract analysis.
 Your task is to extract and classify clauses from ANY type of contract document.
 
 CRITICAL: You must be THOROUGH and extract ALL information. Missing information is a critical failure.
@@ -132,7 +148,7 @@ For each clause you identify, provide:
    - IMPORTANT: If a clause mentions data protection, privacy, or confidentiality, classify it as "ConfidentialityClause" NOT "GeneralClause"
    - IMPORTANT: If a clause mentions payment, fees, or billing, classify it as "PaymentClause"
 2. The section number if present
-3. The title if present
+3. The title if present (use the section heading provided, or extract from text)
 4. The full raw text of the clause
 5. A brief 4-8 sentence summary explaining what the clause does
 6. Key points as 5-10 bullet strings capturing key terms, numbers, dates, thresholds
@@ -147,25 +163,25 @@ For each clause you identify, provide:
    - termination_conditions: List of conditions (convenience, breach, default, etc.)
    - termination_method: How termination is executed
    - cancellation_charge: Any fees for termination
-   
+
    FOR PaymentClause:
    - payment_terms: Full payment terms description
    - payment_days: Number of days for payment (e.g., "net 30" = 30)
    - payment_schedule: When payments are due
    - late_fee: Late payment penalties
    - payment_method: How payment is made
-   
+
    FOR ConfidentialityClause:
    - confidentiality_scope: What information is confidential
    - disclosure_exceptions: When disclosure is allowed
    - duration: How long confidentiality lasts
    - return_obligation: Whether information must be returned
-   
+
    FOR PenaltyClause:
    - penalty_amount: Monetary penalty amount
    - penalty_percentage: Percentage-based penalty
    - penalty_conditions: When penalty applies
-   
+
    FOR LiabilityClause:
    - liability_limit: Maximum liability amount
    - liability_exclusions: What's excluded
@@ -180,6 +196,7 @@ Guidelines:
 - If text mentions data protection, privacy, confidentiality, non-disclosure, classify as ConfidentialityClause
 - If a section doesn't constitute a meaningful clause, note it in unclassified_sections
 - Double-check your extraction - missing structured data is worse than no extraction
+- If table data is provided inside a section, analyze it carefully for payment schedules, milestones, or compliance requirements
 
 Return your response as a JSON object with this structure:
 {{
@@ -208,13 +225,33 @@ Return your response as a JSON object with this structure:
     ],
     "unclassified_sections": ["Section 25 appears to be boilerplate..."]
 }}
-"""),
+"""
+
+    EXTRACTION_PROMPT = ChatPromptTemplate.from_messages([
+        ("system", _CLAUSE_EXTRACTION_INSTRUCTIONS),
         ("human", """Extract and classify clauses from this contract text:
 
 Document ID: {document_id}
 
 Contract Text:
 {contract_text}
+
+Extract all identifiable clauses and return as JSON."""),
+    ])
+
+    STRUCTURED_EXTRACTION_PROMPT = ChatPromptTemplate.from_messages([
+        ("system", _CLAUSE_EXTRACTION_INSTRUCTIONS + """
+IMPORTANT: The document below has been PRE-SEGMENTED into named sections by a document
+layout analyzer. Each section has a heading (if detected) and its paragraph text.
+Use the section boundaries as strong hints for clause boundaries — each section typically
+corresponds to one clause. Tables within sections contain structured data (payment
+schedules, compliance checklists, etc.) that you should analyze carefully.
+"""),
+        ("human", """Extract and classify clauses from this pre-segmented contract:
+
+Document ID: {document_id}
+
+{structured_text}
 
 Extract all identifiable clauses and return as JSON."""),
     ])
@@ -227,22 +264,33 @@ Extract all identifiable clauses and return as JSON."""),
         Extract clauses from contract text.
         
         Args:
-            input_data: Dict with 'document_id' and 'text' keys
+            input_data: Dict with 'document_id', 'text', and optionally
+                        'sections' (list of DocumentSection dicts from DocTags).
             
         Returns:
             ClauseExtractionResult with extracted clauses
         """
         document_id = input_data.get("document_id", "unknown")
         text = input_data.get("text", "")
+        sections = input_data.get("sections", [])
         
         # Auto-record input in explanation
         if self.enable_explanations:
             self._init_explanation(context_id=document_id)
             self._record_input(input_data)
         
-        self.log_start("clause_extraction", document_id=document_id, text_length=len(text))
+        self.log_start(
+            "clause_extraction",
+            document_id=document_id,
+            text_length=len(text),
+            has_sections=bool(sections),
+        )
         
-        # For very long documents, process in chunks
+        # If we have structured sections from DocTags, use section-aware extraction
+        if sections:
+            return await self._process_with_sections(document_id, text, sections)
+        
+        # Fallback: legacy flat-text extraction
         if len(text) > 30000:
             return await self._process_long_document(document_id, text)
         
@@ -256,19 +304,7 @@ Extract all identifiable clauses and return as JSON."""),
                 "contract_text": text,
             })
             
-            # Parse clauses - normalize None/missing values
-            clauses = []
-            for clause_data in result.get("clauses", []):
-                # Normalize None/missing values
-                if clause_data.get("structured_summary") is None:
-                    clause_data["structured_summary"] = {}
-                if clause_data.get("attributes") is None:
-                    clause_data["attributes"] = {}
-                if clause_data.get("key_points") is None:
-                    clause_data["key_points"] = []
-                if clause_data.get("summary") is None or "summary" not in clause_data:
-                    clause_data["summary"] = ""
-                clauses.append(ExtractedClause(**clause_data))
+            clauses = self._parse_clause_result(result)
             
             extraction_result = ClauseExtractionResult(
                 document_id=document_id,
@@ -276,52 +312,7 @@ Extract all identifiable clauses and return as JSON."""),
                 unclassified_sections=result.get("unclassified_sections", []),
             )
             
-            # Auto-record output and add coverage analysis
-            if self.enable_explanations and self.explanation_builder:
-                self._record_output(extraction_result)
-                
-                # Analyze coverage - check for common clause types
-                found_types = set(c.clause_type for c in clauses)
-                expected_types = ["TerminationClause", "PaymentClause", "ConfidentialityClause", 
-                                "WarrantyClause", "LiabilityClause", "GoverningLawClause"]
-                
-                for clause_type in expected_types:
-                    self.explanation_builder.add_coverage(
-                        clause_type,
-                        clause_type in found_types,
-                        f"{'Found' if clause_type in found_types else 'Not found'} in document"
-                    )
-                
-                # Check for notice periods in termination clauses
-                termination_clauses = [c for c in clauses if c.clause_type == "TerminationClause"]
-                if termination_clauses:
-                    has_notice = any(
-                        "notice" in str(c.attributes).lower() or 
-                        "period" in str(c.attributes).lower() or
-                        "days" in str(c.attributes).lower()
-                        for c in termination_clauses
-                    )
-                    if not has_notice:
-                        self.explanation_builder.add_gap(
-                            "Notice period extraction",
-                            "Termination clauses found but notice periods not extracted from attributes"
-                        )
-                
-                # Add reasoning
-                self.explanation_builder.add_decision(
-                    "Clause extraction strategy",
-                    f"Used LLM-based extraction to identify {len(clauses)} clauses",
-                    alternatives_considered=["Rule-based extraction", "Template matching"]
-                )
-                
-                # Set confidence
-                if len(clauses) > 0:
-                    self.explanation_builder.set_confidence("high" if len(clauses) > 5 else "medium")
-                else:
-                    self.explanation_builder.set_confidence("low")
-                
-                # Save explanation
-                self._save_explanation()
+            self._record_explanation(document_id, clauses)
             
             self.log_complete(
                 "clause_extraction",
@@ -334,6 +325,260 @@ Extract all identifiable clauses and return as JSON."""),
         except Exception as e:
             self.log_error("clause_extraction", e, document_id=document_id)
             raise
+
+    def _parse_clause_result(
+        self,
+        result: dict[str, Any],
+        section_meta: dict[str, Any] | None = None,
+    ) -> list[ExtractedClause]:
+        """Parse LLM output into ExtractedClause objects with optional section metadata."""
+        clauses = []
+        for clause_data in result.get("clauses", []):
+            if clause_data.get("structured_summary") is None:
+                clause_data["structured_summary"] = {}
+            if clause_data.get("attributes") is None:
+                clause_data["attributes"] = {}
+            if clause_data.get("key_points") is None:
+                clause_data["key_points"] = []
+            if clause_data.get("summary") is None or "summary" not in clause_data:
+                clause_data["summary"] = ""
+            # Inject DocTags section metadata if available
+            if section_meta:
+                clause_data.setdefault("section_title", section_meta.get("title", ""))
+                clause_data.setdefault("has_table", section_meta.get("has_table", False))
+                clause_data.setdefault("page_range", section_meta.get("page_range", ""))
+                clause_data.setdefault("source_section_id", section_meta.get("section_id", ""))
+            clauses.append(ExtractedClause(**clause_data))
+        return clauses
+
+    def _record_explanation(self, document_id: str, clauses: list[ExtractedClause]) -> None:
+        """Record explanation metadata for extracted clauses."""
+        if not (self.enable_explanations and self.explanation_builder):
+            return
+        extraction_result = ClauseExtractionResult(document_id=document_id, clauses=clauses)
+        self._record_output(extraction_result)
+
+        found_types = set(c.clause_type for c in clauses)
+        expected_types = [
+            "TerminationClause", "PaymentClause", "ConfidentialityClause",
+            "WarrantyClause", "LiabilityClause", "GoverningLawClause",
+        ]
+        for clause_type in expected_types:
+            self.explanation_builder.add_coverage(
+                clause_type,
+                clause_type in found_types,
+                f"{'Found' if clause_type in found_types else 'Not found'} in document",
+            )
+
+        termination_clauses = [c for c in clauses if c.clause_type == "TerminationClause"]
+        if termination_clauses:
+            has_notice = any(
+                "notice" in str(c.attributes).lower()
+                or "period" in str(c.attributes).lower()
+                or "days" in str(c.attributes).lower()
+                for c in termination_clauses
+            )
+            if not has_notice:
+                self.explanation_builder.add_gap(
+                    "Notice period extraction",
+                    "Termination clauses found but notice periods not extracted from attributes",
+                )
+
+        self.explanation_builder.add_decision(
+            "Clause extraction strategy",
+            f"Used LLM-based extraction to identify {len(clauses)} clauses",
+            alternatives_considered=["Rule-based extraction", "Template matching"],
+        )
+        if len(clauses) > 0:
+            self.explanation_builder.set_confidence("high" if len(clauses) > 5 else "medium")
+        else:
+            self.explanation_builder.set_confidence("low")
+        self._save_explanation()
+
+    async def _process_with_sections(
+        self,
+        document_id: str,
+        text: str,
+        sections: list[dict[str, Any]],
+    ) -> ClauseExtractionResult:
+        """
+        Process pre-segmented DocTags sections.
+
+        Groups sections into batches that fit the LLM context window and uses
+        the structured extraction prompt so the LLM gets section boundaries,
+        titles, tables, and formatting hints.
+        """
+        from agents.ingestion.doctags_preprocessor import DocumentSection
+
+        # Reconstruct Pydantic models from dicts
+        doc_sections = [DocumentSection(**s) for s in sections]
+
+        # Build section batches that fit within token budget (~25K chars)
+        batches: list[list[DocumentSection]] = []
+        current_batch: list[DocumentSection] = []
+        current_len = 0
+
+        for sec in doc_sections:
+            sec_text = sec.to_llm_text()
+            if current_len + len(sec_text) > 25000 and current_batch:
+                batches.append(current_batch)
+                current_batch = [sec]
+                current_len = len(sec_text)
+            else:
+                current_batch.append(sec)
+                current_len += len(sec_text)
+        if current_batch:
+            batches.append(current_batch)
+
+        parser = JsonOutputParser()
+        chain = self.STRUCTURED_EXTRACTION_PROMPT | self.llm | parser
+
+        all_clauses: list[ExtractedClause] = []
+        all_unclassified: list[str] = []
+
+        for batch_idx, batch in enumerate(batches):
+            # Build structured text for this batch
+            structured_text = "\n\n".join(
+                s.to_llm_text() for s in batch
+            )
+
+            # Build section metadata list for matching
+            section_metas: list[dict[str, Any]] = []
+            for sec in batch:
+                section_metas.append({
+                    "title": sec.title,
+                    "has_table": sec.has_table,
+                    "page_range": sec.page_range,
+                    "section_id": sec.section_id,
+                    "full_text": sec.full_text,
+                })
+
+            try:
+                result = await chain.ainvoke({
+                    "document_id": (
+                        f"{document_id}"
+                        if len(batches) == 1
+                        else f"{document_id}_batch_{batch_idx}"
+                    ),
+                    "structured_text": structured_text,
+                })
+
+                for clause_data in result.get("clauses", []):
+                    if clause_data.get("structured_summary") is None:
+                        clause_data["structured_summary"] = {}
+                    if clause_data.get("attributes") is None:
+                        clause_data["attributes"] = {}
+                    if clause_data.get("key_points") is None:
+                        clause_data["key_points"] = []
+                    if (
+                        clause_data.get("summary") is None
+                        or "summary" not in clause_data
+                    ):
+                        clause_data["summary"] = ""
+
+                    matched_meta = self._match_clause_to_section(
+                        clause_data, section_metas, batch,
+                    )
+                    if matched_meta:
+                        clause_data.setdefault(
+                            "section_title",
+                            matched_meta.get("title", ""),
+                        )
+                        clause_data.setdefault(
+                            "has_table",
+                            matched_meta.get("has_table", False),
+                        )
+                        clause_data.setdefault(
+                            "page_range",
+                            matched_meta.get("page_range", ""),
+                        )
+                        clause_data.setdefault(
+                            "source_section_id",
+                            matched_meta.get("section_id", ""),
+                        )
+                    else:
+                        clause_data.setdefault(
+                            "source_section_id", "docling",
+                        )
+
+                    all_clauses.append(ExtractedClause(**clause_data))
+
+                all_unclassified.extend(
+                    result.get("unclassified_sections", [])
+                )
+
+            except Exception as e:
+                self.log_error("clause_extraction_batch", e, document_id=document_id, batch=batch_idx)
+                raise
+
+        # Renumber clause IDs for consistency
+        for i, clause in enumerate(all_clauses, 1):
+            clause.clause_id = f"cl_{i}"
+
+        self._record_explanation(document_id, all_clauses)
+        self.log_complete(
+            "clause_extraction",
+            document_id=document_id,
+            clause_count=len(all_clauses),
+            mode="structured_sections",
+        )
+
+        return ClauseExtractionResult(
+            document_id=document_id,
+            clauses=all_clauses,
+            unclassified_sections=all_unclassified,
+        )
+
+    @staticmethod
+    def _match_clause_to_section(
+        clause_data: dict[str, Any],
+        section_metas: list[dict[str, Any]],
+        batch: list,
+    ) -> dict[str, Any] | None:
+        """Match an extracted clause to its source DocTags section.
+
+        Strategy (in order):
+        1. Title substring match (section title <-> clause title)
+        2. Content overlap (longest common text between clause
+           raw_text and section full_text)
+        3. Single-section batch fallback
+        """
+        clause_title = (clause_data.get("title") or "").lower()
+        clause_text = (
+            clause_data.get("raw_text") or ""
+        ).lower()
+
+        # 1. Title substring match
+        for meta in section_metas:
+            sec_title = (meta.get("title") or "").lower()
+            if sec_title and clause_title and (
+                sec_title in clause_title
+                or clause_title in sec_title
+            ):
+                return meta
+
+        # 2. Content overlap: pick section with most shared words
+        if clause_text:
+            clause_words = set(clause_text.split())
+            best_meta = None
+            best_overlap = 0
+            for meta in section_metas:
+                sec_text = (meta.get("full_text") or "").lower()
+                if not sec_text:
+                    continue
+                sec_words = set(sec_text.split())
+                overlap = len(clause_words & sec_words)
+                if overlap > best_overlap:
+                    best_overlap = overlap
+                    best_meta = meta
+            if best_meta and best_overlap > 5:
+                return best_meta
+
+        # 3. Single-section batch fallback
+        if len(batch) == 1 and section_metas:
+            return section_metas[0]
+
+        return None
 
     async def _process_long_document(
         self,

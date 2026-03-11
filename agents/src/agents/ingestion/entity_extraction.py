@@ -246,7 +246,7 @@ Return your response as a JSON object with this structure:
         ("human", """Extract all entities from this contract text:
 
 Document ID: {document_id}
-
+{structural_hints_block}
 Contract Text:
 {contract_text}
 
@@ -277,8 +277,12 @@ Extract all parties, dates, amounts, and jurisdictions. Return as JSON."""),
         if self.explanation_builder:
             self._record_input(input_data)
         text = input_data.get("text", "")
+        structural_hints = input_data.get("structural_hints", {})
         
         self.log_start("entity_extraction", document_id=document_id, text_length=len(text))
+        
+        # Build structural hints block for the prompt (empty string if no hints)
+        hints_block = self._format_structural_hints(structural_hints)
         
         # Create the chain
         parser = JsonOutputParser()
@@ -287,7 +291,8 @@ Extract all parties, dates, amounts, and jurisdictions. Return as JSON."""),
         try:
             result = await chain.ainvoke({
                 "document_id": document_id,
-                "contract_text": text[:30000],  # Limit text length
+                "contract_text": text[:30000],
+                "structural_hints_block": hints_block,
             })
             
             # Parse entities
@@ -405,3 +410,30 @@ Extract all parties, dates, amounts, and jurisdictions. Return as JSON."""),
             if date.date_type.lower() in ["expirationdate", "expiration_date", "end_date", "enddate", "termination_date"]:
                 return date
         return None
+
+    @staticmethod
+    def _format_structural_hints(hints: dict[str, Any]) -> str:
+        """Format DocTags structural hints into a prompt block."""
+        if not hints:
+            return ""
+
+        parts: list[str] = ["\nDocument Structure Hints (from layout analysis):"]
+        titles = hints.get("section_titles", [])
+        if titles:
+            parts.append(f"  Section headings found: {', '.join(titles)}")
+
+        bold_terms = hints.get("bold_terms", [])
+        if bold_terms:
+            parts.append(f"  Bold/emphasized terms: {', '.join(bold_terms[:15])}")
+
+        table_summaries = hints.get("table_summaries", [])
+        if table_summaries:
+            parts.append(f"  Tables: {'; '.join(table_summaries)}")
+
+        total = hints.get("total_sections", 0)
+        if total:
+            parts.append(f"  Total sections: {total}")
+
+        if len(parts) == 1:
+            return ""
+        return "\n".join(parts) + "\n"

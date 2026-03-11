@@ -202,13 +202,27 @@ class IngestionOrchestrator:
             self.artifact_store = None
         
         # Get service instances via dependency injection
+        # When docling, use docling targets (contracts_docling, contract_clauses_docling)
         from service_factory import get_service_factory
-        service_factory = get_service_factory(settings=self.settings)
+        if self.settings.ingestion_source == "docling":
+            ingestion_settings = self.settings.model_copy(update={
+                "fuseki_dataset": self.settings.docling_fuseki_dataset,
+                "milvus_collection_v2": self.settings.docling_milvus_collection,
+            })
+            service_factory = get_service_factory(settings=ingestion_settings)
+        else:
+            service_factory = get_service_factory(settings=self.settings)
         sparql_store = service_factory.get_sparql_store()
         vector_store = service_factory.get_vector_store()
-        
-        # Initialize extraction agents
-        self.document_agent = DocumentIngestionAgent(settings=self.settings)
+
+        # Document agent: Docling (MinIO) or legacy (PyPDF2/python-docx)
+        if self.settings.ingestion_source == "docling":
+            from agents.ingestion.docling_document_ingestion import (
+                DoclingDocumentIngestionAgent,
+            )
+            self.document_agent = DoclingDocumentIngestionAgent(settings=self.settings)
+        else:
+            self.document_agent = DocumentIngestionAgent(settings=self.settings)
         self.clause_agent = ClauseExtractionAgent(settings=self.settings)
         self.entity_agent = EntityExtractionAgent(settings=self.settings)
         self.obligation_risk_agent = ObligationRiskAgent(settings=self.settings)
@@ -242,8 +256,14 @@ class IngestionOrchestrator:
             self.schema_governance = SchemaGovernance(
                 version_dir=Path(self.config.artifact_dir) / "schema_versions"
             )
+            # Cache latest schema version id (if any) for stamping results
+            latest = self.schema_governance.get_latest_version()
+            self.active_schema_version_id: str | None = (
+                latest.version_id if latest else None
+            )
         else:
             self.schema_governance = None
+            self.active_schema_version_id = None
         
         # Initialize document registry for duplicate detection
         if self.settings.enable_duplicate_check:
@@ -328,13 +348,14 @@ class IngestionOrchestrator:
     def _initialize_agents(self) -> None:
         """Initialize all pipeline agents."""
         from service_factory import get_service_factory
-        
+
         factory = get_service_factory()
         sparql_store = factory.get_sparql_store()
         vector_store = factory.get_vector_store()
-        
-        # Initialize agents
-        self.document_agent = DocumentIngestionAgent(settings=self.settings)
+
+        # Document agent: Docling or legacy (set in __init__, preserve)
+        if self.settings.ingestion_source != "docling":
+            self.document_agent = DocumentIngestionAgent(settings=self.settings)
         self.clause_agent = ClauseExtractionAgent(settings=self.settings)
         self.entity_agent = EntityExtractionAgent(settings=self.settings)
         self.obligation_agent = ObligationRiskAgent(settings=self.settings)
@@ -435,6 +456,9 @@ class IngestionOrchestrator:
             success=False,
             started_at=datetime.now(),
         )
+        # Stamp active schema version if known
+        if self.active_schema_version_id and not result.schema_version:
+            result.schema_version = self.active_schema_version_id
         
         self.logger.info("Starting ingestion pipeline", document_id=document_id, override=override)
         
@@ -446,15 +470,18 @@ class IngestionOrchestrator:
             if not doc_text:
                 return result
             
-            # Step 2: Clause Extraction
-            clauses = await self._step_clause_extraction(result, document_id, doc_text)
+            # Extract DocTags data from metadata (Docling pipeline only)
+            doc_sections = metadata.get("sections")
+            structural_hints = metadata.get("structural_hints")
+            
+            # Step 2: Clause Extraction (with sections if available)
+            clauses = await self._step_clause_extraction(
+                result, document_id, doc_text, sections=doc_sections,
+            )
             if not clauses:
                 return result
             
             # Step 2.5: Validate extracted clauses for missing critical attributes
-            # NOTE: This only identifies gaps. The actual fix happens in RDF generation
-            # where LLM extraction is attempted for missing attributes.
-            # The validation logs gaps for transparency and explanation purposes.
             self._validate_clause_attributes(result, document_id, clauses)
             
             # Save clauses immediately (async)
@@ -470,8 +497,9 @@ class IngestionOrchestrator:
                 self.logger.info("Clauses saved to file", path=str(clause_path))
             
             # Steps 3 & 4: Parallel Extraction (Entity + Obligation/Risk)
-            # These steps are independent and can run concurrently
-            entity_task = self._step_entity_extraction(result, document_id, doc_text)
+            entity_task = self._step_entity_extraction(
+                result, document_id, doc_text, structural_hints=structural_hints,
+            )
             oblig_risk_task = self._step_obligation_risk_extraction(
                 result, document_id, clauses
             )
@@ -547,9 +575,10 @@ class IngestionOrchestrator:
                     # Store suggestions for later processing
                     result.ontology_suggestions = alignment.suggestions
             
-            # Step 6: RDF Generation
+            # Step 6: RDF Generation (with document structure sections if available)
             rdf_data = await self._step_rdf_generation(
-                result, document_id, clauses, obligations, risks, entities
+                result, document_id, clauses, obligations, risks, entities,
+                sections=doc_sections,
             )
             if not rdf_data:
                 return result
@@ -592,8 +621,14 @@ class IngestionOrchestrator:
             vector_task = None
             if self.config.enable_vector_indexing:
                 rdf_uris = self._extract_rdf_uris_from_turtle(rdf_data, clauses)
+                pipeline_tag = (
+                    "docling"
+                    if self.settings.ingestion_source == "docling"
+                    else "legacy"
+                )
                 vector_task = self._step_vector_indexing(
-                    result, document_id, clauses, rdf_uris
+                    result, document_id, clauses, rdf_uris,
+                    source_pipeline=pipeline_tag,
                 )
             
             # Reasoning task (depends on Fuseki load, but can run with vector indexing)
@@ -700,7 +735,11 @@ class IngestionOrchestrator:
         text: str | None,
         document_id: str,
     ) -> tuple[str | None, dict[str, Any]]:
-        """Step 1: Document intake."""
+        """Step 1: Document intake.
+
+        Returns (text, metadata) where metadata may contain 'sections' and
+        'structural_hints' from DocTags preprocessing (Docling pipeline only).
+        """
         step = IngestionStep(step_name="document_intake", started_at=datetime.now())
         
         try:
@@ -711,6 +750,11 @@ class IngestionOrchestrator:
                     "filename": doc_result.filename,
                     "page_count": doc_result.page_count,
                 }
+                # Carry DocTags sections + hints through metadata for downstream agents
+                if doc_result.sections:
+                    metadata["sections"] = doc_result.sections
+                if doc_result.structural_hints:
+                    metadata["structural_hints"] = doc_result.structural_hints
             elif text:
                 doc_text = text
                 metadata = {"source": "raw_text"}
@@ -718,7 +762,11 @@ class IngestionOrchestrator:
                 raise ValueError("Either file_path or text must be provided")
             
             step.success = True
-            step.result = {"text_length": len(doc_text), **metadata}
+            step.result = {
+                "text_length": len(doc_text),
+                "has_sections": bool(metadata.get("sections")),
+                **{k: v for k, v in metadata.items() if k not in ("sections", "structural_hints")},
+            }
             
             return doc_text, metadata
             
@@ -736,20 +784,24 @@ class IngestionOrchestrator:
         result: IngestionResult,
         document_id: str,
         text: str,
+        sections: list[dict] | None = None,
     ) -> list[ExtractedClause]:
         """Step 2: Clause extraction with self-healing."""
         step = IngestionStep(step_name="clause_extraction", started_at=datetime.now())
         logger.info("=" * 60)
         logger.info(f"STEP 2: CLAUSE EXTRACTION - {document_id}")
-        logger.info(f"Input text length: {len(text)} chars")
+        logger.info(f"Input text length: {len(text)} chars, sections: {len(sections) if sections else 0}")
         logger.info("Calling LLM for clause identification... (this may take 2-5 minutes)")
         
         try:
-            # Use error recovery wrapper for self-healing
+            input_data: dict[str, Any] = {"document_id": document_id, "text": text}
+            if sections:
+                input_data["sections"] = sections
+
             extraction_result = await self._execute_with_recovery(
                 self.clause_agent.process,
                 "clause_extraction",
-                {"document_id": document_id, "text": text}
+                input_data,
             )
             
             if extraction_result is None:
@@ -786,6 +838,7 @@ class IngestionOrchestrator:
         result: IngestionResult,
         document_id: str,
         text: str,
+        structural_hints: dict | None = None,
     ) -> EntityExtractionResult | None:
         """Step 3: Entity extraction with self-healing."""
         step = IngestionStep(step_name="entity_extraction", started_at=datetime.now())
@@ -795,11 +848,14 @@ class IngestionOrchestrator:
         logger.info("  Calling LLM... (this may take 2-3 minutes)")
         
         try:
-            # Use error recovery wrapper for self-healing
+            input_data: dict[str, Any] = {"document_id": document_id, "text": text}
+            if structural_hints:
+                input_data["structural_hints"] = structural_hints
+
             entity_result = await self._execute_with_recovery(
                 self.entity_agent.process,
                 "entity_extraction",
-                {"document_id": document_id, "text": text}
+                input_data,
             )
             
             if entity_result is None:
@@ -1307,6 +1363,7 @@ class IngestionOrchestrator:
         obligations: list,
         risks: list,
         entities: EntityExtractionResult | None,
+        sections: list[dict] | None = None,
     ) -> str | None:
         """Step 6: RDF generation."""
         step = IngestionStep(step_name="rdf_generation", started_at=datetime.now())
@@ -1366,13 +1423,16 @@ class IngestionOrchestrator:
             contract_info["title"] = entities.contract_title if entities and entities.contract_title else f"Contract {document_id}"
             contract_info["status"] = "Active"
             
-            rdf_result = await self.rdf_agent.process({
+            rdf_input: dict[str, Any] = {
                 "document_id": document_id,
                 "contract_info": contract_info,
                 "clauses": clauses,
                 "obligations": obligations,
                 "risks": risks,
-            })
+            }
+            if sections:
+                rdf_input["sections"] = sections
+            rdf_result = await self.rdf_agent.process(rdf_input)
             
             result.triples_generated = rdf_result.triple_count
             
@@ -1568,6 +1628,7 @@ class IngestionOrchestrator:
         document_id: str,
         clauses: list[ExtractedClause],
         rdf_uris: dict[str, str] | None = None,
+        source_pipeline: str = "legacy",
     ) -> None:
         """Step 10: Vector indexing with RDF URI linking."""
         step = IngestionStep(step_name="vector_indexing", started_at=datetime.now())
@@ -1578,6 +1639,7 @@ class IngestionOrchestrator:
                 "contract_id": document_id,
                 "document_id": document_id,
                 "rdf_uris": rdf_uris or {},
+                "source_pipeline": source_pipeline,
             })
             
             result.vectors_indexed = index_result.indexed_count
@@ -1971,6 +2033,13 @@ class IngestionOrchestrator:
             max_concurrent=max_concurrent,
             parallel_extraction=extract_documents_parallel
         )
+
+        # IMPORTANT: In Docling mode, pre-extracting into raw text loses DocTags
+        # sections/hints which downstream agents rely on. Prefer ingest(file_path)
+        # so DoclingDocumentIngestionAgent runs inside the pipeline and preserves
+        # structured sections.
+        if self.settings.ingestion_source == "docling":
+            extract_documents_parallel = False
         
         # Process documents with streaming: extract → ingest immediately (no waiting)
         semaphore = asyncio.Semaphore(max_concurrent)

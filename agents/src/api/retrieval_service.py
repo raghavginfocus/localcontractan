@@ -83,8 +83,15 @@ async def lifespan(app: FastAPI):
             error=str(e)
         )
 
-    # Initialize retrieval orchestrator
-    app_state["retrieval_orchestrator"] = LangGraphRetrievalOrchestrator()
+    # Initialize retrieval orchestrator with retrieval targets
+    # (retrieval_fuseki_dataset, retrieval_milvus_collection)
+    retrieval_settings = config.model_copy(update={
+        "fuseki_dataset": config.retrieval_fuseki_dataset,
+        "milvus_collection_v2": config.retrieval_milvus_collection,
+    })
+    app_state["retrieval_orchestrator"] = LangGraphRetrievalOrchestrator(
+        settings=retrieval_settings
+    )
 
     logger.info("Retrieval Service started successfully on port 8002")
     
@@ -235,7 +242,6 @@ async def search(
         result = await orchestrator.process_query(
             query=q,
             max_results=limit,
-            include_reasoning=False
         )
         
         return {
