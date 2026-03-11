@@ -3,7 +3,7 @@ Batch Processor Agent - Processes multiple documents in parallel.
 
 Features:
 - Parallel processing with resource management
-- Progress tracking and reporting
+- Progress tracking and reporting with tqdm
 - Error handling and retry logic
 - Comprehensive logging
 """
@@ -24,6 +24,14 @@ from agents.ingestion.directory_scanner import (
 from logger import get_module_logger
 
 logger = get_module_logger(__name__)
+
+# Try to import tqdm for progress bars
+try:
+    from tqdm.asyncio import tqdm as async_tqdm
+    TQDM_AVAILABLE = True
+except ImportError:
+    TQDM_AVAILABLE = False
+    logger.warning("tqdm not available - progress bars disabled. Install with: uv add tqdm")
 
 
 @dataclass
@@ -187,6 +195,16 @@ class BatchProcessorAgent(BaseAgent):
     ):
         """Process tasks in parallel with concurrency control."""
         
+        # Create progress bar if tqdm is available
+        pbar = None
+        if TQDM_AVAILABLE:
+            pbar = async_tqdm(
+                total=len(tasks),
+                desc="Processing documents",
+                unit="doc",
+                bar_format="{l_bar}{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}]"
+            )
+        
         async def process_single_task(task: ProcessingTask):
             """Process a single task with retry logic."""
             async with self.semaphore:
@@ -214,8 +232,16 @@ class BatchProcessorAgent(BaseAgent):
                         )
                         task.result = result
                         
+                        # Update progress bar
+                        if pbar:
+                            pbar.update(1)
+                            pbar.set_postfix({
+                                'file': task.file.filename[:30],
+                                'status': '✓'
+                            })
+                        
                         logger.info(
-                            f"Processed {task.file.filename} "
+                            f"✓ Processed {task.file.filename} "
                             f"in {task.duration_ms:.0f}ms"
                         )
                         break
@@ -225,7 +251,7 @@ class BatchProcessorAgent(BaseAgent):
                         
                         if attempt < self.max_retries:
                             logger.warning(
-                                f"Processing {task.file.filename} failed "
+                                f"⚠ Processing {task.file.filename} failed "
                                 f"(attempt {attempt + 1}/{self.max_retries + 1}): "
                                 f"{e}. Retrying..."
                             )
@@ -238,8 +264,16 @@ class BatchProcessorAgent(BaseAgent):
                             task.completed_at = datetime.now()
                             task.error = str(e)
                             
+                            # Update progress bar
+                            if pbar:
+                                pbar.update(1)
+                                pbar.set_postfix({
+                                    'file': task.file.filename[:30],
+                                    'status': '✗'
+                                })
+                            
                             logger.error(
-                                f"Processing {task.file.filename} failed "
+                                f"✗ Processing {task.file.filename} failed "
                                 f"after {self.max_retries + 1} attempts: {e}"
                             )
                 
@@ -252,6 +286,10 @@ class BatchProcessorAgent(BaseAgent):
             *[process_single_task(task) for task in tasks],
             return_exceptions=True
         )
+        
+        # Close progress bar
+        if pbar:
+            pbar.close()
     
     async def _update_progress(
         self,

@@ -32,8 +32,8 @@ dependencies = [
     "unstructured>=0.15.0",
     "python-docx>=1.1.0",
     "pytesseract>=0.3.10",
-    "openpyxl>=3.1.0",  # Excel file support
-    "xlrd>=2.0.0",  # Legacy Excel support
+    "openpyxl>=3.1.0", # Excel file support
+    "xlrd>=2.0.0", # Legacy Excel support
     # RDF and SPARQL
     "rdflib>=7.0.0",
     "SPARQLWrapper>=2.0.0",
@@ -66,6 +66,7 @@ dependencies = [
     "aiofiles>=24.1.0",
     # System Monitoring
     "psutil>=5.9.0",
+    "tqdm>=4.67.1",
 ]
 
 [project.optional-dependencies]

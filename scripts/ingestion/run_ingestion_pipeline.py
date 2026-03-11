@@ -16,7 +16,13 @@ This script processes PDF and DOCX files through the full agentic pipeline:
 
 Usage:
     cd agents
-    uv run python ../scripts/run_ingestion_pipeline.py
+    uv run python ../scripts/ingestion/run_ingestion_pipeline.py
+    
+    # With Docling pipeline
+    uv run python ../scripts/ingestion/run_ingestion_pipeline.py --use-docling
+    
+    # Override existing documents
+    uv run python ../scripts/ingestion/run_ingestion_pipeline.py --override
 """  # noqa: E501
 
 import asyncio
@@ -36,6 +42,14 @@ from config import get_settings
 from logger import get_module_logger
 
 logger = get_module_logger(__name__)
+
+# Try to import tqdm for progress bars
+try:
+    from tqdm import tqdm
+    TQDM_AVAILABLE = True
+except ImportError:
+    TQDM_AVAILABLE = False
+    logger.warning("tqdm not available. Install with: uv add tqdm")
 
 
 async def main():
@@ -128,11 +142,25 @@ async def main():
     start_time = datetime.now()
     
     try:
-        results = await orchestrator.ingest_batch(
-            items=batch_items,
-            max_concurrent=10,  # Process up to 10 documents simultaneously
-            extract_documents_parallel=True,  # Extract all docs in parallel first
-        )
+        # Use tqdm progress bar if available
+        if TQDM_AVAILABLE:
+            print("📊 Progress:")
+            with tqdm(total=len(batch_items), desc="Ingesting", unit="doc",
+                     bar_format="{l_bar}{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}]") as pbar:
+                results = await orchestrator.ingest_batch(
+                    items=batch_items,
+                    max_concurrent=10,
+                    extract_documents_parallel=True,
+                    progress_callback=lambda: pbar.update(0)  # Callback for updates
+                )
+                pbar.n = len(batch_items)  # Complete the bar
+                pbar.refresh()
+        else:
+            results = await orchestrator.ingest_batch(
+                items=batch_items,
+                max_concurrent=10,
+                extract_documents_parallel=True,
+            )
         
         # Print summary for each document
         for i, (result, doc_path) in enumerate(zip(results, documents), 1):
