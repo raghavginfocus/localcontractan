@@ -464,10 +464,12 @@ async def run_ingestion_job(job_id: str, file_path: str, override: bool = False)
             # durable record of which keys were discovered.
             manifest_prefix = "ingestion_manifests"
             manifest_key = f"{manifest_prefix}/{job_id}.json"
+            job = job_manager.get_job(job_id)
+            created_at = job.created_at.isoformat() if job and getattr(job, "created_at", None) else None
             manifest = {
                 "job_id": job_id,
                 "prefix": prefix,
-                "created_at": job_manager.get_job(job_id).created_at.isoformat(),
+                "created_at": created_at,
                 "items": [
                     {"key": k, "status": "discovered"}
                     for k in doc_keys
@@ -540,8 +542,24 @@ async def run_ingestion_job(job_id: str, file_path: str, override: bool = False)
                 return
 
             items = [{"file_path": f} for f in local_files]
+
+            # Progress callback: incorporate skipped_unchanged so progress reflects
+            # both already-processed docs and new ones.
+            total_docs = len(doc_keys)
+            base_done = skipped_unchanged
+
+            async def _progress_callback(done_in_batch: int, batch_total: int) -> None:
+                try:
+                    total_done = base_done + done_in_batch
+                    percent = int((total_done / max(total_docs, 1)) * 100)
+                    job_manager.update_progress(job_id, percent)
+                except Exception as e:
+                    logger.warning("progress_callback_failed", error=str(e))
+
             ingestion_results = await orchestrator.ingest_batch(
-                items, max_concurrent=5,
+                items,
+                max_concurrent=5,
+                progress_callback=_progress_callback,
             )
 
             # Register completion by (key, etag) identity so future runs can skip
@@ -607,7 +625,7 @@ async def run_ingestion_job(job_id: str, file_path: str, override: bool = False)
                 "prefix": prefix,
                 "skipped_unchanged": skipped_unchanged,
                 "results": [
-                    r.model_dump() if hasattr(r, "model_dump") else r
+                    r.model_dump(mode="json") if hasattr(r, "model_dump") else r
                     for r in ingestion_results
                 ],
             }
@@ -632,19 +650,39 @@ async def run_ingestion_job(job_id: str, file_path: str, override: bool = False)
             
             # Process files in batch
             items = [{"file_path": f} for f in files]
-            results = await orchestrator.ingest_batch(items, max_concurrent=5)
+
+            total_docs = len(items)
+
+            async def _dir_progress_callback(done_in_batch: int, batch_total: int) -> None:
+                try:
+                    percent = int((done_in_batch / max(total_docs, 1)) * 100)
+                    job_manager.update_progress(job_id, percent)
+                except Exception as e:
+                    logger.warning("dir_progress_callback_failed", error=str(e))
+
+            results = await orchestrator.ingest_batch(
+                items,
+                max_concurrent=5,
+                progress_callback=_dir_progress_callback,
+            )
             
-            # Aggregate results
-            successful = sum(1 for r in results if r.get("status") == "success")
+            # Aggregate results (results are IngestionResult objects)
+            successful = sum(
+                1 for r in results
+                if getattr(r, "success", r.get("success", False))
+            )
             failed = len(results) - successful
-            
+            results_serializable = [
+                r.model_dump(mode="json") if hasattr(r, "model_dump") else r
+                for r in results
+            ]
             result = {
                 "status": "success",
                 "message": f"Processed {len(results)} files",
                 "files_processed": len(results),
                 "successful": successful,
                 "failed": failed,
-                "results": results
+                "results": results_serializable,
             }
             
         else:
@@ -654,10 +692,13 @@ async def run_ingestion_job(job_id: str, file_path: str, override: bool = False)
                 file_path=file_path,
                 override=override
             )
-            # Convert IngestionResult to dict for JSON serialization
-            result = ingestion_result.model_dump() if hasattr(ingestion_result, 'model_dump') else ingestion_result
-        
-        # Mark as completed
+            # Convert IngestionResult to JSON-serializable dict (datetime -> str)
+            result = (
+                ingestion_result.model_dump(mode="json")
+                if hasattr(ingestion_result, "model_dump")
+                else ingestion_result
+            )
+        # Mark as completed (result must be JSON-serializable)
         job_manager.mark_completed(job_id, result)
         logger.info(f"Completed ingestion job {job_id}")
         

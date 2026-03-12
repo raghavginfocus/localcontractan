@@ -10,6 +10,10 @@ The enhanced pipeline consists of three main components:
 2. **Batch Processor Agent** - Processes multiple documents in parallel through full ingestion pipeline
 3. **Enhanced Document Ingestion Agent** - Extracts text with LLM reasoning
 
+This guide focuses on *how to scale ingestion*. For the most up-to-date end-to-end architecture (including **Docling**, **MinIO prefixes**, **async jobs**, **ETag skip**, **manifests**, and **schema evolution/governance**), see:
+
+- `docs/guide/ingestion.md`
+
 ## Features
 
 ### 1. Recursive Directory Scanning
@@ -41,6 +45,8 @@ Currently supports the following document formats:
 |--------|-----------|---------|----------|
 | PDF | `.pdf` | pdfplumber | Standard contracts |
 | Word | `.docx`, `.doc` | python-docx | Editable contracts |
+
+> Note: When `INGESTION_SOURCE=docling`, parsing is handled by **Docling** and the supported extensions are controlled by Docling (commonly `.pdf`, `.docx`, `.doc`, `.pptx`). See `docs/guide/ingestion.md` for details and MinIO usage.
 
 ### 3. Batch Processing
 
@@ -103,9 +109,11 @@ print(f"Analysis: {doc.metadata.get('llm_analysis')}")
 Process a single directory:
 
 ```bash
-python scripts/ingestion/run_enhanced_ingestion.py \
-    --directory examples \
-    --max-files 10
+# Recommended: use Makefile targets (runs inside the ingestion container)
+make ingest DIR=examples
+
+# Force reprocess all documents (ignore registry/duplicate detection)
+make ingest-override DIR=examples
 ```
 
 ### Full Pipeline
@@ -113,8 +121,22 @@ python scripts/ingestion/run_enhanced_ingestion.py \
 Process all documents with full pipeline:
 
 ```bash
-python scripts/ingestion/run_enhanced_ingestion.py \
-    --directory examples
+make ingest DIR=examples
+```
+
+### Docling + MinIO (Async)
+
+When running structure-aware ingestion from MinIO prefixes, use the async job API via Makefile:
+
+```bash
+# Submit async Docling ingestion from MinIO (default: minio://input/examples)
+make ingest-async-minio
+
+# Custom prefix
+make ingest-async-minio PREFIX=input/examples/Adobe/child_contracts
+
+# Track progress and get per-file results when complete
+make ingest-status JOB_ID=<job-id>
 ```
 
 ### Programmatic Usage
@@ -217,6 +239,11 @@ asyncio.run(main())
    - Generate OWL extensions
    - Update Fuseki ontology
    - Sync with retrieval agents
+
+5. **Operational Reliability (MinIO jobs)**
+   - ETag-based skip/re-ingest (identity = `bucket:key:etag`)
+   - Per-job manifests in object storage (`ingestion_manifests/<job_id>.json`)
+   - Async job progress (0–100) via `/api/v1/ingest/status/<job_id>`
 
 ## Configuration
 

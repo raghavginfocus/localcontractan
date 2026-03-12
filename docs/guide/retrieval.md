@@ -92,6 +92,24 @@ The system automatically routes queries based on intent:
 | `analyze_*` | Complex | "Analyze risks in IBM contracts" |
 | `compare_*` | Complex | "Compare payment terms" |
 
+## Running Query Tests from YAML
+
+Test cases are defined in YAML (e.g. `agents/tests/test_cases/test_cases_retrieval.yaml`) with `id`, `question`, `name`, `category`, etc. You can run them through the **same API** as `make query`:
+
+```bash
+# Run all test cases from the default YAML (one by one, same POST /api/v1/query)
+make query-yaml
+
+# Run from another YAML file (path relative to agents/)
+make query-yaml YAML=tests/test_cases/test_cases_quick.yaml
+
+# Run a single test case by id (e.g. termination_analysis, contract_count)
+make query-case CASE=termination_analysis
+make query-case CASE=contract_count YAML=tests/test_cases/test_cases_simple.yaml
+```
+
+These targets call the gateway at `http://localhost:8080/api/v1/query` with each `question` and display the answer and timing. No code changes required; add or edit cases in the YAML and re-run.
+
 ## Using the Retrieval API
 
 ### Basic Usage

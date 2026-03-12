@@ -210,6 +210,7 @@ class VectorIndexAgent(BaseAgent):
             return result
             
         except Exception as e:
+            logger.exception("vector_indexing failed: %s", e)
             self.log_error("vector_indexing", e, contract_id=contract_id)
             return IndexResult(
                 success=False,

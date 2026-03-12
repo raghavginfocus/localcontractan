@@ -32,14 +32,13 @@ def load_test_cases(yaml_file: Path) -> List[Dict[str, Any]]:
 def send_query(
     api_url: str, question: str, timeout: int = 300
 ) -> Dict[str, Any]:
-    """Send query to API endpoint."""
+    """Send query to API endpoint (same as make query)."""
     try:
         response = httpx.post(
             f"{api_url}/api/v1/query",
             json={
                 "query": question,
                 "max_results": 10,
-                "include_reasoning": True,
             },
             timeout=timeout,
         )
@@ -108,8 +107,14 @@ def main():
     )
     parser.add_argument(
         "--api-url",
-        default="http://localhost:8001",
-        help="API base URL (default: http://localhost:8001)",
+        default="http://localhost:8080",
+        help="API base URL - gateway (default: http://localhost:8080)",
+    )
+    parser.add_argument(
+        "--case",
+        type=str,
+        metavar="ID",
+        help="Run only the test case with this id (e.g. termination_analysis)",
     )
     parser.add_argument(
         "--timeout",
@@ -125,19 +130,24 @@ def main():
     
     args = parser.parse_args()
 
-    # Check if YAML file exists
-    if not args.yaml.exists():
-        console.print(f"[red]Error: YAML file not found: {args.yaml}[/red]")
+    # Resolve YAML path (relative to cwd when from Makefile: agents/)
+    yaml_path = args.yaml if args.yaml.is_absolute() else Path.cwd() / args.yaml
+    if not yaml_path.exists():
+        console.print(f"[red]Error: YAML file not found: {yaml_path}[/red]")
         sys.exit(1)
-
-    # Load test cases
-    console.print(f"[blue]Loading test cases from {args.yaml}...[/blue]")
-    test_cases = load_test_cases(args.yaml)
+    console.print(f"[blue]Loading test cases from {yaml_path}...[/blue]")
+    test_cases = load_test_cases(yaml_path)
     
-    if args.limit:
-        test_cases = test_cases[:args.limit]
-    
-    console.print(f"[green]✅ Loaded {len(test_cases)} test case(s)[/green]\n")
+    if args.case:
+        test_cases = [tc for tc in test_cases if tc.get("id") == args.case]
+        if not test_cases:
+            console.print(f"[red]Error: No test case with id '{args.case}' in YAML[/red]")
+            sys.exit(1)
+        console.print(f"[green]✅ Running single case: {args.case}[/green]\n")
+    else:
+        if args.limit:
+            test_cases = test_cases[:args.limit]
+        console.print(f"[green]✅ Loaded {len(test_cases)} test case(s)[/green]\n")
 
     # Display header
     console.print(
@@ -165,7 +175,7 @@ def main():
             console=console,
         ) as progress:
             task = progress.add_task(
-                f"Querying API...", total=None
+                "Querying API...", total=None
             )
             
             start_time = time.time()

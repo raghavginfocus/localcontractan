@@ -2006,6 +2006,7 @@ class IngestionOrchestrator:
         items: list[dict[str, Any]],
         max_concurrent: int = 10,  # Increased from 5 to 10 for better throughput
         extract_documents_parallel: bool = True,
+        progress_callback: Any | None = None,
     ) -> list[IngestionResult]:
         """
         Process multiple documents concurrently with full pipeline parallelization.
@@ -2043,12 +2044,14 @@ class IngestionOrchestrator:
         
         # Process documents with streaming: extract → ingest immediately (no waiting)
         semaphore = asyncio.Semaphore(max_concurrent)
+        completed_count = 0
         
         async def extract_and_ingest(item: dict[str, Any]) -> IngestionResult:
             """
             Extract document (if needed) and immediately start ingestion pipeline.
             This allows extraction and ingestion to overlap across documents.
             """
+            nonlocal completed_count
             async with semaphore:
                 # Step 1: Extract document if file_path provided and parallel extraction enabled
                 if extract_documents_parallel and item.get("file_path"):
@@ -2081,11 +2084,31 @@ class IngestionOrchestrator:
                 # Step 2: Start ingestion pipeline immediately (no waiting for other documents)
                 # Note: We rely on cloud provider's built-in rate limiting + retry logic
                 # No proactive rate limiting needed - providers handle 429 errors, we retry
-                return await self.ingest(
+                result = await self.ingest(
                     file_path=item.get("file_path"),
                     text=item.get("text"),
                     document_id=item.get("document_id"),
                 )
+
+                # Update batch-level progress if callback provided
+                if progress_callback:
+                    try:
+                        completed_count += 1
+                        # progress_callback(done, total)
+                        maybe_coro = progress_callback(
+                            completed_count,
+                            len(items),
+                        )
+                        # Support both async and sync callbacks
+                        if hasattr(maybe_coro, "__await__"):
+                            await maybe_coro
+                    except Exception as cb_err:
+                        self.logger.warning(
+                            "Batch progress callback failed",
+                            error=str(cb_err),
+                        )
+
+                return result
         
         # Process all items concurrently - each document extracts then ingests immediately
         # This allows extraction and ingestion to overlap across documents

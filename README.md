@@ -216,6 +216,53 @@ make ingest-test
 - Progress tracking and detailed logging
 - Automatic retry on failures
 
+### MinIO / Docling Ingestion (Async)
+
+Docling mode enables **structure-aware parsing** and **MinIO prefix ingestion**.
+
+```bash
+# Submit async ingestion job for MinIO prefix (default: minio://input/examples)
+make ingest-async-minio
+
+# Custom MinIO prefix
+make ingest-async-minio PREFIX=input/examples/Adobe/child_contracts
+
+# Force re-ingest all objects under the prefix (ignore registry)
+make ingest-async-minio-override PREFIX=input/examples
+
+# Check job status + progress (0-100) and final result
+make ingest-status JOB_ID=<job-id>
+```
+
+### Verify Data (Fuseki + Milvus)
+
+These checks report both **legacy/default** targets and **Docling** targets:
+
+```bash
+# Fuseki: triple counts + dataset stats (contracts + contracts_docling)
+make check-fuseki-data
+
+# Milvus: entity counts + samples (contract_clauses, contract_clauses_v2, contract_clauses_docling)
+make check-milvus-data
+```
+
+### Retrieval: Query + YAML Test Cases
+
+```bash
+# Single natural-language question (gateway -> retrieval service)
+make query Q="What are the termination notice periods in our contracts?"
+
+# Run all query test cases from YAML (one by one, same /api/v1/query)
+make query-yaml
+
+# Run a single YAML test case by id
+make query-case CASE=termination_analysis
+
+# Use a different YAML file (path is relative to agents/)
+make query-yaml YAML=tests/test_cases/test_cases_quick.yaml
+make query-case CASE=contract_count YAML=tests/test_cases/test_cases_simple.yaml
+```
+
 ## API Testing
 
 ```bash

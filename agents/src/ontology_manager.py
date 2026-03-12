@@ -51,7 +51,7 @@ class OntologySchema:
             # Also store with proc: prefix for compatibility
             classes[f"proc:{local_name}"] = class_uri
         
-        logger.info("Extracted OWL classes", count=len(classes) // 2)
+        logger.debug("Extracted OWL classes", count=len(classes) // 2)
         return classes
     
     def _extract_properties(self) -> dict[str, URIRef]:
@@ -72,7 +72,7 @@ class OntologySchema:
             properties[local_name] = prop_uri
             properties[f"proc:{local_name}"] = prop_uri
         
-        logger.info("Extracted properties", count=len(properties) // 2)
+        logger.debug("Extracted properties", count=len(properties) // 2)
         return properties
     
     def _build_hierarchy(self) -> dict[str, list[str]]:
@@ -342,7 +342,7 @@ class OntologyManager:
             raise ValueError(f"Schema '{merge_into}' not found")
         
         path = Path(path)
-        self.logger.info("Loading ontology extension", path=str(path))
+        self.logger.debug("Loading ontology extension", path=str(path))
         
         # Load extension with format detection
         ext_graph = Graph()
@@ -375,10 +375,12 @@ class OntologyManager:
         base_schema._properties = base_schema._extract_properties()
         base_schema._class_hierarchy = base_schema._build_hierarchy()
         
+        total_classes = len(base_schema.get_all_classes())
         self.logger.info(
-            "Merged extension",
+            "Loaded ontology extension",
+            path=path.name,
             schema_id=merge_into,
-            total_classes=len(base_schema.get_all_classes()),
+            total_classes=total_classes,
         )
     
     def load_generated_extensions(

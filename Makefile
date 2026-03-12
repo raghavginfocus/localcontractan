@@ -318,6 +318,26 @@ ingest-async-override: ## Submit async job with override (usage: make ingest-asy
 		-d "{\"file_path\": \"$$DIR\", \"override\": true}" | python3 -m json.tool || echo "$(RED)Error: API not responding$(NC)"
 	@echo "$(GREEN)✓ Async job submitted with override. Use 'make ingest-status JOB_ID=<id>' to check progress$(NC)"
 
+ingest-async-minio: ## Submit async ingestion from MinIO (usage: make ingest-async-minio [PREFIX=input/examples])
+	@if [ -z "$(PREFIX)" ]; then \
+		PREFIX="input/examples"; \
+	fi; \
+	echo "$(BLUE)Submitting async ingestion job for minio://$$PREFIX...$(NC)"; \
+	curl -s -X POST http://localhost:8080/api/v1/ingest/async \
+		-H "Content-Type: application/json" \
+		-d "{\"file_path\": \"minio://$$PREFIX\", \"override\": false}" | python3 -m json.tool || echo "$(RED)Error: API not responding$(NC)"
+	@echo "$(GREEN)✓ MinIO async job submitted. Use 'make ingest-status JOB_ID=<id>' to check progress$(NC)"
+
+ingest-async-minio-override: ## Submit async MinIO ingestion with override (usage: make ingest-async-minio-override [PREFIX=input/examples])
+	@if [ -z "$(PREFIX)" ]; then \
+		PREFIX="input/examples"; \
+	fi; \
+	echo "$(BLUE)Submitting async ingestion job for minio://$$PREFIX (override)...$(NC)"; \
+	curl -s -X POST http://localhost:8080/api/v1/ingest/async \
+		-H "Content-Type: application/json" \
+		-d "{\"file_path\": \"minio://$$PREFIX\", \"override\": true}" | python3 -m json.tool || echo "$(RED)Error: API not responding$(NC)"
+	@echo "$(GREEN)✓ MinIO async job submitted with override. Use 'make ingest-status JOB_ID=<id>' to check progress$(NC)"
+
 ingest-status: ## Check async job status (usage: make ingest-status JOB_ID=xxx)
 	@if [ -z "$(JOB_ID)" ]; then \
 		echo "$(RED)Error: JOB_ID parameter required$(NC)"; \
@@ -409,6 +429,25 @@ api-query-direct: ## Query retrieval service directly (usage: make api-query-dir
 		-H "Content-Type: application/json" \
 		-d "{\"query\": \"$(Q)\", \"max_results\": 10}" | \
 		python3 -m json.tool || echo "$(RED)Error: Retrieval service not responding$(NC)"
+
+# Run retrieval queries from YAML test cases (same API as make query)
+query-yaml: ## Run all query test cases from YAML (usage: make query-yaml [YAML=agents/tests/test_cases/test_cases_retrieval.yaml])
+	@if [ -z "$(YAML)" ]; then \
+		YAML="tests/test_cases/test_cases_retrieval.yaml"; \
+	fi; \
+	echo "$(BLUE)Running query tests from YAML: $$YAML$(NC)"; \
+	cd $(AGENTS_DIR) && $(PYTHON) ../scripts/test_api_queries.py --yaml "$$YAML" --api-url http://localhost:8080
+
+query-case: ## Run one test case from YAML by id (usage: make query-case CASE=termination_analysis [YAML=...])
+	@if [ -z "$(CASE)" ]; then \
+		echo "$(RED)Error: CASE parameter required$(NC)"; \
+		echo "Usage: make query-case CASE=termination_analysis"; \
+		echo "  Optional: YAML=tests/test_cases/test_cases_retrieval.yaml"; \
+		exit 1; \
+	fi; \
+	if [ -z "$(YAML)" ]; then YAML="tests/test_cases/test_cases_retrieval.yaml"; fi; \
+	echo "$(BLUE)Running test case: $(CASE) from $$YAML$(NC)"; \
+	cd $(AGENTS_DIR) && $(PYTHON) ../scripts/test_api_queries.py --yaml "$$YAML" --case "$(CASE)" --api-url http://localhost:8080
 
 api-test-simple: ## Test API with simple test cases
 	@echo "$(BLUE)Testing API with simple test cases...$(NC)"
