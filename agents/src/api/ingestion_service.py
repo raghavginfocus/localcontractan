@@ -560,6 +560,7 @@ async def run_ingestion_job(job_id: str, file_path: str, override: bool = False)
                 items,
                 max_concurrent=5,
                 progress_callback=_progress_callback,
+                job_id=job_id,
             )
 
             # Register completion by (key, etag) identity so future runs can skip
@@ -664,6 +665,7 @@ async def run_ingestion_job(job_id: str, file_path: str, override: bool = False)
                 items,
                 max_concurrent=5,
                 progress_callback=_dir_progress_callback,
+                job_id=job_id,
             )
             
             # Aggregate results (results are IngestionResult objects)
@@ -690,7 +692,8 @@ async def run_ingestion_job(job_id: str, file_path: str, override: bool = False)
             logger.info(f"Processing single file: {file_path}")
             ingestion_result = await orchestrator.ingest(
                 file_path=file_path,
-                override=override
+                override=override,
+                job_id=job_id,
             )
             # Convert IngestionResult to JSON-serializable dict (datetime -> str)
             result = (

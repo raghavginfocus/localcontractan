@@ -112,6 +112,20 @@ class Settings(BaseSettings):
         description="Enable duplicate document detection",
     )
 
+    # Artifact storage (generated RDF/OWL/SHACL/rules, etc.)
+    artifact_store_backend: str = Field(
+        default="local",
+        description="Artifact store backend: local or object_storage",
+    )
+    artifact_store_prefix: str = Field(
+        default="ingestion_artifacts",
+        description="Object storage prefix for uploaded artifacts (when backend=object_storage)",
+    )
+    artifact_store_cleanup_local: bool = Field(
+        default=False,
+        description="Delete local artifact files after uploading to object storage",
+    )
+
     # Milvus Vector Database
     milvus_host: str = Field(
         default="localhost",

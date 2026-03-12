@@ -365,6 +365,9 @@ graph TB
 | `INGESTION_SOURCE` | Pipeline mode | `docling` or `legacy` |
 | `DOCLING_FUSEKI_DATASET` | Fuseki dataset for Docling | `contracts_docling` |
 | `DOCLING_MILVUS_COLLECTION` | Milvus collection for Docling | `contract_clauses_docling` |
+| `ARTIFACT_STORE_BACKEND` | Where generated artifacts are stored | `local` or `object_storage` |
+| `ARTIFACT_STORE_PREFIX` | Object storage prefix for artifacts | `ingestion_artifacts` |
+| `ARTIFACT_STORE_CLEANUP_LOCAL` | Delete local artifacts after upload | `true`/`false` |
 | Object storage (MinIO) | Endpoint, bucket, keys | See `env.example` |
 | `DOCUMENT_REGISTRY_BACKEND` | Registry backend | `sqlite` (or `redis`) |
 

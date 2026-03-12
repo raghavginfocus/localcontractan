@@ -197,7 +197,10 @@ class IngestionOrchestrator:
         
         # Initialize artifact store for transparency
         if self.config.save_artifacts:
-            self.artifact_store = ArtifactStore(base_dir=self.config.artifact_dir)
+            self.artifact_store = ArtifactStore(
+                base_dir=self.config.artifact_dir,
+                settings=self.settings,
+            )
         else:
             self.artifact_store = None
         
@@ -396,6 +399,7 @@ class IngestionOrchestrator:
         text: str | None = None,
         document_id: str | None = None,
         override: bool = False,
+        job_id: str | None = None,
     ) -> IngestionResult:
         """
         Process a contract document through the full pipeline.
@@ -662,7 +666,7 @@ class IngestionOrchestrator:
             if self.artifact_store:
                 await self._step_save_artifacts(
                     result, document_id, doc_text, clauses, entities,
-                    obligations, risks, rdf_data
+                    obligations, risks, rdf_data, job_id=job_id,
                 )
             
             # Mark success
@@ -1951,6 +1955,7 @@ class IngestionOrchestrator:
         obligations: list,
         risks: list,
         rdf_data: str,
+        job_id: str | None = None,
     ) -> None:
         """Step 13: Save all intermediate artifacts for transparency."""
         step = IngestionStep(step_name="save_artifacts", started_at=datetime.now())
@@ -1981,6 +1986,15 @@ class IngestionOrchestrator:
                 result=result.model_dump(),
             )
             result.artifact_paths["log"] = str(log_path)
+
+            # If configured, upload artifacts to object storage (MinIO/COS) and
+            # optionally cleanup local files to keep containers light.
+            if self.artifact_store:
+                result.artifact_paths = await self.artifact_store.maybe_upload_artifact_paths(
+                    result.artifact_paths,
+                    document_id=document_id,
+                    job_id=job_id,
+                )
             
             step.success = True
             step.result = {
@@ -2007,6 +2021,7 @@ class IngestionOrchestrator:
         max_concurrent: int = 10,  # Increased from 5 to 10 for better throughput
         extract_documents_parallel: bool = True,
         progress_callback: Any | None = None,
+        job_id: str | None = None,
     ) -> list[IngestionResult]:
         """
         Process multiple documents concurrently with full pipeline parallelization.
@@ -2084,10 +2099,11 @@ class IngestionOrchestrator:
                 # Step 2: Start ingestion pipeline immediately (no waiting for other documents)
                 # Note: We rely on cloud provider's built-in rate limiting + retry logic
                 # No proactive rate limiting needed - providers handle 429 errors, we retry
-                result = await self.ingest(
+                        result = await self.ingest(
                     file_path=item.get("file_path"),
                     text=item.get("text"),
                     document_id=item.get("document_id"),
+                            job_id=job_id,
                 )
 
                 # Update batch-level progress if callback provided

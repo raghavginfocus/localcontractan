@@ -11,6 +11,7 @@ Now uses async file I/O for better performance.
 """
 
 import json
+import os
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -24,7 +25,6 @@ logger = get_module_logger(__name__)
 
 # Default base directory for artifacts
 # Detect if running in container or locally
-import os
 if os.path.exists("/app/data"):
     # Running in container
     DEFAULT_ARTIFACT_DIR = Path("/app/data/generated")
@@ -53,14 +53,35 @@ class ArtifactStore:
         └── doc_002_20240110.json
     """
 
-    def __init__(self, base_dir: Path | str | None = None):
+    def __init__(
+        self,
+        base_dir: Path | str | None = None,
+        *,
+        settings: Any | None = None,
+    ):
         """
         Initialize the artifact store.
         
         Args:
             base_dir: Base directory for all artifacts
+            settings: Application settings (used for object-storage backend)
         """
         self.base_dir = Path(base_dir) if base_dir else DEFAULT_ARTIFACT_DIR
+        self.settings = settings
+
+        # Optional object storage backend (MinIO/COS)
+        self._object_storage = None
+        self._object_bucket = None
+        self._uploaded: dict[str, str] = {}
+        if self.settings and getattr(self.settings, "artifact_store_backend", "local") == "object_storage":
+            try:
+                from storage.object_storage import get_object_storage_from_config
+
+                self._object_storage = get_object_storage_from_config()
+                self._object_bucket = getattr(self.settings, "object_storage_bucket", None)
+            except Exception as e:
+                logger.warning("artifact_object_storage_init_failed", error=str(e))
+                self._object_storage = None
         
         # Create subdirectories for artifacts
         self.rdf_dir = self.base_dir / "rdf"
@@ -75,6 +96,117 @@ class ArtifactStore:
             dir_path.mkdir(parents=True, exist_ok=True)
         
         logger.info("ArtifactStore initialized", base_dir=str(self.base_dir))
+
+    def _content_type_for_path(self, path: Path) -> str:
+        suffix = path.suffix.lower()
+        if suffix in (".ttl",):
+            return "text/turtle"
+        if suffix in (".rules",):
+            return "text/plain"
+        if suffix in (".sparql",):
+            return "application/sparql-query"
+        if suffix in (".json",):
+            return "application/json"
+        return "application/octet-stream"
+
+    def _build_object_key(
+        self,
+        *,
+        job_id: str | None,
+        document_id: str,
+        category: str,
+        filename: str,
+    ) -> str:
+        prefix = "ingestion_artifacts"
+        if self.settings:
+            prefix = getattr(self.settings, "artifact_store_prefix", prefix) or prefix
+        job_part = job_id or "single"
+        return f"{prefix}/{job_part}/{document_id}/{category}/{filename}"
+
+    def _to_minio_uri(self, key: str) -> str:
+        # Keep it consistent with existing minio:// usage in this repo.
+        bucket = self._object_bucket or "bucket"
+        return f"minio://{bucket}/{key}"
+
+    async def upload_file(
+        self,
+        file_path: Path,
+        *,
+        job_id: str | None,
+        document_id: str,
+        category: str,
+    ) -> str | None:
+        """
+        Upload a local artifact file to object storage (if configured).
+        Returns a minio:// URI when uploaded; otherwise None.
+        """
+        if not self._object_storage:
+            return None
+        if not file_path.exists() or not file_path.is_file():
+            return None
+
+        key = self._build_object_key(
+            job_id=job_id,
+            document_id=document_id,
+            category=category,
+            filename=file_path.name,
+        )
+        content_type = self._content_type_for_path(file_path)
+        async with aiofiles.open(file_path, "rb") as f:
+            data = await f.read()
+        self._object_storage.upload(key=key, data=data, content_type=content_type)
+        uri = self._to_minio_uri(key)
+        self._uploaded[str(file_path)] = uri
+        return uri
+
+    async def maybe_upload_artifact_paths(
+        self,
+        artifact_paths: dict[str, str],
+        *,
+        document_id: str,
+        job_id: str | None = None,
+    ) -> dict[str, str]:
+        """
+        Upload any local artifact files referenced in artifact_paths to object storage.
+        Returns updated dict where values are minio:// URIs when uploaded.
+        """
+        if not self._object_storage:
+            return artifact_paths
+
+        updated: dict[str, str] = dict(artifact_paths)
+        cleanup = bool(getattr(self.settings, "artifact_store_cleanup_local", False)) if self.settings else False
+
+        for name, p in artifact_paths.items():
+            if not p or p.startswith("/dev/null"):
+                continue
+            local_path = Path(p)
+            if not local_path.exists() or not local_path.is_file():
+                continue
+            # Grouping heuristic based on artifact name
+            if name.startswith("owl_") or "owl" in name:
+                category = "ontology"
+            elif name.startswith("rule_") or "rules" in name or "sparql" in name:
+                category = "rules"
+            elif name == "rdf":
+                category = "rdf"
+            else:
+                category = "misc"
+
+            uri = await self.upload_file(
+                local_path,
+                job_id=job_id,
+                document_id=document_id,
+                category=category,
+            )
+            if uri:
+                updated[name] = uri
+                if cleanup:
+                    try:
+                        await aiofiles.os.remove(str(local_path))
+                    except Exception as e:
+                        logger.warning("artifact_cleanup_failed", path=str(local_path), error=str(e))
+
+        return updated
 
     async def save_rdf(
         self,
