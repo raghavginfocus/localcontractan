@@ -2021,6 +2021,7 @@ class IngestionOrchestrator:
         max_concurrent: int = 10,  # Increased from 5 to 10 for better throughput
         extract_documents_parallel: bool = True,
         progress_callback: Any | None = None,
+        override: bool = False,
         job_id: str | None = None,
     ) -> list[IngestionResult]:
         """
@@ -2099,11 +2100,12 @@ class IngestionOrchestrator:
                 # Step 2: Start ingestion pipeline immediately (no waiting for other documents)
                 # Note: We rely on cloud provider's built-in rate limiting + retry logic
                 # No proactive rate limiting needed - providers handle 429 errors, we retry
-                        result = await self.ingest(
+                result = await self.ingest(
                     file_path=item.get("file_path"),
                     text=item.get("text"),
                     document_id=item.get("document_id"),
-                            job_id=job_id,
+                    override=override,
+                    job_id=job_id,
                 )
 
                 # Update batch-level progress if callback provided

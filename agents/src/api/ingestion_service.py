@@ -430,20 +430,30 @@ async def run_ingestion_job(job_id: str, file_path: str, override: bool = False)
             # Example: minio://input/examples
             # We treat everything after scheme as object key prefix.
             prefix = file_path[len("minio://") :].lstrip("/")
-            if prefix and not prefix.endswith("/"):
-                prefix = prefix + "/"
+            is_single_key = prefix and not prefix.endswith("/")
+            if is_single_key:
+                # Treat as a single object key (file) rather than a "directory prefix"
+                doc_keys = [prefix]
+                # For caching and reverse-mapping, we need a directory-like prefix
+                # that ends with "/".
+                prefix_dir = str(Path(prefix).parent).rstrip("/") + "/"
+            else:
+                if prefix and not prefix.endswith("/"):
+                    prefix = prefix + "/"
+                prefix_dir = prefix
 
             logger.info(
                 "Processing MinIO prefix recursively",
                 prefix=prefix,
             )
 
-            keys = storage.list_objects(prefix)
-            doc_keys = [
-                k
-                for k in keys
-                if k.lower().endswith((".pdf", ".docx", ".txt", ".md"))
-            ]
+            if not is_single_key:
+                keys = storage.list_objects(prefix)
+                doc_keys = [
+                    k
+                    for k in keys
+                    if k.lower().endswith((".pdf", ".docx", ".doc", ".pptx"))
+                ]
 
             if not doc_keys:
                 job_manager.mark_completed(job_id, {
@@ -489,7 +499,7 @@ async def run_ingestion_job(job_id: str, file_path: str, override: bool = False)
                 )
 
             # Download to a local cache so downstream agents can read as files.
-            cache_root = Path("/app/data/minio_input_cache") / prefix.rstrip("/")
+            cache_root = Path("/app/data/minio_input_cache") / prefix_dir.rstrip("/")
             cache_root.mkdir(parents=True, exist_ok=True)
 
             local_files: list[str] = []
@@ -504,7 +514,7 @@ async def run_ingestion_job(job_id: str, file_path: str, override: bool = False)
                     skipped_unchanged += 1
                     continue
 
-                rel = key[len(prefix):] if key.startswith(prefix) else key
+                rel = key[len(prefix_dir):] if key.startswith(prefix_dir) else Path(key).name
                 local_path = cache_root / rel
                 local_path.parent.mkdir(parents=True, exist_ok=True)
                 if (not local_path.exists()) or override:
@@ -560,6 +570,7 @@ async def run_ingestion_job(job_id: str, file_path: str, override: bool = False)
                 items,
                 max_concurrent=5,
                 progress_callback=_progress_callback,
+                override=override,
                 job_id=job_id,
             )
 
@@ -572,7 +583,7 @@ async def run_ingestion_job(job_id: str, file_path: str, override: bool = False)
                 item_status_by_key: dict[str, str] = {}
                 for r, local_path in zip(ingestion_results, local_files):
                     rel = local_path.replace(cache_prefix, "")
-                    key = prefix + rel
+                    key = prefix_dir + rel
                     meta = storage.get_object_metadata(key)
                     etag = meta.get("etag", "")
                     identity = f"{storage.bucket}:{key}:{etag}"
