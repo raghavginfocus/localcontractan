@@ -230,6 +230,43 @@ Progress is updated as documents are processed (and, for MinIO, accounts for ski
 - Contents: `job_id`, `prefix`, `created_at`, `items`: list of `{ "key": "<object key>", "status": "completed" | "failed" | "skipped_unchanged" }`.
 - Use this to see exactly which keys were processed or skipped without calling the job API.
 
+#### Example manifest
+
+Example file in MinIO: `ingestion_manifests/654dc48d-6475-4c1c-9be5-5710d3f1d1d0.json`
+
+```json
+{
+  "job_id": "654dc48d-6475-4c1c-9be5-5710d3f1d1d0",
+  "prefix": "input/examples/",
+  "created_at": "2026-03-12T05:21:28.538072",
+  "items": [
+    { "key": "input/examples/contract_a.docx", "status": "completed" },
+    { "key": "input/examples/contract_b.pdf", "status": "failed" },
+    { "key": "input/examples/old/contract_c.docx", "status": "skipped_unchanged" }
+  ]
+}
+```
+
+#### What the fields mean
+
+- **`job_id`**: The async ingestion job id (matches the API `/api/v1/ingest/status/<job_id>`).
+- **`prefix`**: The MinIO prefix that was scanned (the part after `minio://`).
+- **`created_at`**: When the job was created (ISO timestamp).
+- **`items[]`**: One entry per discovered object key.
+  - **`key`**: Full MinIO object key (including directories).
+  - **`status`**:
+    - **`discovered`**: initial state right after listing (before processing)
+    - **`skipped_unchanged`**: registry says “already completed” for the identity `bucket:key:etag` and `override=false`
+    - **`completed`**: ingested successfully
+    - **`failed`**: ingestion attempt failed (see the job `result.results[]` or ingestion logs for the error)
+
+#### Why the manifest is useful
+
+- **Audit trail**: durable record of exactly which MinIO keys were considered for a job.
+- **“What’s left?” reporting**: you can compute remaining work as keys that are not `completed`/`skipped_unchanged`.
+- **Restartability**: if ingestion is interrupted, you can re-run the same prefix; unchanged docs will become `skipped_unchanged` and only remaining/new keys will process.
+- **Debugging failures**: quickly list the `failed` keys and retry only those (either by re-uploading/fixing source docs or by running `override=true` for just that prefix).
+
 ### Worked Example: What happens when I start MinIO ingestion?
 
 Walkthrough for:
