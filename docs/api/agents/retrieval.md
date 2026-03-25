@@ -1,663 +1,430 @@
 # Retrieval Agents API Reference
 
-Complete API reference for query processing and retrieval agents with examples.
+Complete API reference for query processing and retrieval agents with comprehensive examples, parameter descriptions, and usage patterns.
 
 ---
 
-## QueryClassifierAgent
+## Table of Contents
 
-Classify user queries to determine the best retrieval strategy.
+- [LangGraphRetrievalOrchestrator](#langgraphretrievalorchestrator) - Main query orchestrator
+- [ReActRetrievalAgent](#reactretrievalagent) - Multi-step reasoning agent
+- [SPARQLGeneratorAgent](#sparqlgeneratoragent) - Natural language to SPARQL
+- [QueryClassifier](#queryclassifier) - Query type classification
+- [Complete Examples](#complete-examples) - End-to-end workflows
+
+---
+
+## LangGraphRetrievalOrchestrator
+
+Main orchestrator for query processing using LangGraph workflow management.
 
 ### Class Definition
 
 ```python
-from agents.retrieval.query_classifier import QueryClassifierAgent
-from config import get_settings
+from agents.retrieval.retrieval_orchestrator_langgraph_v2 import LangGraphRetrievalOrchestrator
 
-agent = QueryClassifierAgent(settings=get_settings())
+orchestrator = LangGraphRetrievalOrchestrator()
+result = await orchestrator.process_query("What are the payment terms?")
 ```
+
+**Purpose**: Coordinates the entire query processing pipeline with state management, observability, and error recovery.
+
+**Parameters:**
+- `sparql_store` (SPARQLStore, optional): SPARQL triple store
+- `vector_store` (VectorStore, optional): Vector store for semantic search
+- `settings` (Settings, optional): Application configuration
+- `enable_logging` (bool, default=True): Enable structured logging
+- `checkpoint_path` (str): Path for workflow checkpointing
+
+**Key Features:**
+- LangGraph workflow management
+- Phoenix observability integration
+- Iterative answer refinement (optional)
+- Comprehensive timing metrics
+- Error recovery and retry logic
+
+**Performance:**
+- Simple queries: 2-5 seconds
+- Complex queries: 5-15 seconds
+- With refinement: 10-30 seconds
 
 ### Methods
 
-#### `process(query: str) -> QueryClassification`
+#### `process_query`
 
-Classify a user query.
+```python
+async def process_query(
+    query: str,
+    max_results: int = 10,
+    graph_uri: str | None = None
+) -> dict[str, Any]
+```
 
-**Parameters:**
+Process a natural language query and return answer with sources.
 
-- `query` (str): User's natural language query
-
-**Returns:**
-
-- `QueryClassification`: Object containing query type and complexity
+**Returns:** Dictionary with `answer`, `sources`, `reasoning_steps`, `metadata`
 
 **Example:**
-
 ```python
-from agents.retrieval.query_classifier import QueryClassifierAgent
-from config import get_settings
+result = await orchestrator.process_query(
+    query="Find contracts with termination notice > 60 days",
+    max_results=20
+)
 
-async def classify_queries():
-    agent = QueryClassifierAgent(settings=get_settings())
-    
-    queries = [
-        "What are the payment terms in contract ABC123?",
-        "Compare liability clauses across all Adobe contracts",
-        "Find contracts with termination clauses and payment terms > 60 days"
-    ]
-    
-    for query in queries:
-        result = await agent.process(query)
-        print(f"\nQuery: {query}")
-        print(f"  Type: {result.query_type}")
-        print(f"  Complexity: {result.complexity}")
-        print(f"  Requires: {result.required_capabilities}")
-
-# Run classification
-asyncio.run(classify_queries())
-```
-
-**Output:**
-
-```
-Query: What are the payment terms in contract ABC123?
-  Type: simple_lookup
-  Complexity: low
-  Requires: ['sparql']
-
-Query: Compare liability clauses across all Adobe contracts
-  Type: aggregation
-  Complexity: medium
-  Requires: ['sparql', 'vector_search']
-
-Query: Find contracts with termination clauses and payment terms > 60 days
-  Type: multi_hop
-  Complexity: high
-  Requires: ['sparql', 'vector_search', 'reasoning']
-```
-
-### Query Types
-
-| Type | Description | Example |
-|------|-------------|---------|
-| `simple_lookup` | Direct entity lookup | "Show contract ABC123" |
-| `semantic_search` | Similarity-based search | "Find contracts about data privacy" |
-| `aggregation` | Aggregate across entities | "Count all active contracts" |
-| `comparison` | Compare multiple entities | "Compare terms in contracts A and B" |
-| `multi_hop` | Multi-step reasoning | "Find suppliers with late payments" |
-| `temporal` | Time-based queries | "Show contracts expiring next month" |
-
-### QueryClassification Model
-
-```python
-class QueryClassification(BaseModel):
-    query_type: str                    # Type of query
-    complexity: str                    # low, medium, high
-    required_capabilities: List[str]   # Required retrieval methods
-    entities: List[str]                # Detected entities
-    intent: str                        # User's intent
-    confidence: float                  # Classification confidence
-```
-
----
-
-## SPARQLGeneratorAgent
-
-Generate SPARQL queries from natural language.
-
-### Class Definition
-
-```python
-from agents.retrieval.sparql_generator import SPARQLGeneratorAgent
-from config import get_settings
-
-agent = SPARQLGeneratorAgent(settings=get_settings())
-```
-
-### Methods
-
-#### `process(input_data: dict) -> SPARQLQuery`
-
-Generate SPARQL query from natural language.
-
-**Parameters:**
-
-- `input_data` (dict): Dictionary with:
-    - `query`: Natural language query
-    - `query_type`: Query type (from classifier)
-    - `entities`: Detected entities (optional)
-
-**Returns:**
-
-- `SPARQLQuery`: Object containing generated SPARQL query
-
-**Example:**
-
-```python
-from agents.retrieval.sparql_generator import SPARQLGeneratorAgent
-from config import get_settings
-
-async def generate_sparql():
-    agent = SPARQLGeneratorAgent(settings=get_settings())
-    
-    result = await agent.process({
-        "query": "Find all contracts with Adobe as supplier",
-        "query_type": "simple_lookup"
-    })
-    
-    print("Generated SPARQL:")
-    print(result.sparql)
-    print(f"\nConfidence: {result.confidence}")
-
-# Run generation
-asyncio.run(generate_sparql())
-```
-
-**Output:**
-
-```
-Generated SPARQL:
-PREFIX contract: <http://example.org/contract#>
-PREFIX org: <http://example.org/organization#>
-
-SELECT ?contract ?title ?date
-WHERE {
-  ?contract a contract:Contract ;
-            contract:hasSupplier ?supplier ;
-            contract:title ?title ;
-            contract:effectiveDate ?date .
-  ?supplier org:name "Adobe" .
-}
-ORDER BY DESC(?date)
-
-Confidence: 0.92
-```
-
-### Complete Example with Execution
-
-```python
-from agents.retrieval.sparql_generator import SPARQLGeneratorAgent
-from fuseki_client import FusekiClient
-from config import get_settings
-
-async def query_contracts():
-    settings = get_settings()
-    
-    # Generate SPARQL
-    generator = SPARQLGeneratorAgent(settings=settings)
-    sparql_result = await generator.process({
-        "query": "Show payment terms for contract ABC123",
-        "query_type": "simple_lookup"
-    })
-    
-    # Execute query
-    fuseki = FusekiClient(settings)
-    results = fuseki.query(sparql_result.sparql)
-    
-    print(f"Found {len(results)} results:")
-    for row in results:
-        print(f"  - {row}")
-
-asyncio.run(query_contracts())
-```
-
----
-
-## HybridRAGAgent
-
-Combine SPARQL and vector search for comprehensive retrieval.
-
-### Class Definition
-
-```python
-from agents.retrieval.hybrid_rag import HybridRAGAgent
-from config import get_settings
-
-agent = HybridRAGAgent(settings=get_settings())
-```
-
-### Methods
-
-#### `process(query: str) -> HybridRAGResult`
-
-Perform hybrid retrieval using both SPARQL and vector search.
-
-**Parameters:**
-
-- `query` (str): User's natural language query
-
-**Returns:**
-
-- `HybridRAGResult`: Combined results from both retrieval methods
-
-**Example:**
-
-```python
-from agents.retrieval.hybrid_rag import HybridRAGAgent
-from config import get_settings
-
-async def hybrid_search():
-    agent = HybridRAGAgent(settings=get_settings())
-    
-    result = await agent.process(
-        "Find contracts with confidentiality clauses and payment terms"
-    )
-    
-    print(f"SPARQL Results: {len(result.sparql_results)}")
-    print(f"Vector Results: {len(result.vector_results)}")
-    print(f"Combined Score: {result.combined_score}")
-    
-    print("\nTop 3 Results:")
-    for i, item in enumerate(result.ranked_results[:3], 1):
-        print(f"{i}. {item['title']} (score: {item['score']:.2f})")
-
-asyncio.run(hybrid_search())
-```
-
-**Output:**
-
-```
-SPARQL Results: 15
-Vector Results: 23
-Combined Score: 0.87
-
-Top 3 Results:
-1. Master Services Agreement - Adobe (score: 0.94)
-2. Participation Agreement - Salesforce (score: 0.89)
-3. Amendment 001 - George P Johnson (score: 0.85)
-```
-
-### Retrieval Strategies
-
-The agent automatically selects the best strategy:
-
-```python
-# Strategy 1: SPARQL-first (structured queries)
-"Show all contracts signed in 2023"
-
-# Strategy 2: Vector-first (semantic queries)
-"Find contracts about data protection"
-
-# Strategy 3: Hybrid (complex queries)
-"Compare liability terms in Adobe and Salesforce contracts"
+print(f"Answer: {result['answer']}")
+print(f"Sources: {len(result['sources'])}")
+print(f"Time: {result['metadata']['processing_time']:.2f}s")
 ```
 
 ---
 
 ## ReActRetrievalAgent
 
-Multi-step reasoning agent using ReAct pattern.
+Multi-step reasoning agent using the ReAct (Reasoning + Acting) pattern.
 
 ### Class Definition
 
 ```python
-from agents.retrieval.react_retrieval import ReActRetrievalAgent
-from config import get_settings
+from agents.retrieval.react_agent_optimized import ReActRetrievalAgent
 
-agent = ReActRetrievalAgent(settings=get_settings())
+agent = ReActRetrievalAgent()
+result = await agent.process({"question": "Which supplier has most contracts?"})
 ```
+
+**Purpose**: Execute complex multi-step retrieval with reasoning, action, and observation cycles.
+
+**Parameters:**
+- `sparql_store` (SPARQLStore, optional): Knowledge graph store
+- `vector_store` (VectorStore, optional): Semantic search store
+- `settings` (Settings, optional): Configuration
+- `llm` (BaseChatModel, optional): Language model
+
+**Key Features:**
+- Parallel sub-query execution
+- Optimized answer synthesis
+- Comprehensive timing breakdown
+- Confidence scoring
+
+**Action Types:**
+- `SPARQL_QUERY`: Execute structured SPARQL
+- `VECTOR_SEARCH`: Semantic similarity search
+- `HYBRID_RETRIEVAL`: Combined approach
+- `SYNTHESIZE`: Generate final answer
+
+**Performance:**
+- Simple: 1-2 iterations, 2-5 seconds
+- Medium: 2-4 iterations, 5-10 seconds
+- Complex: 4-8 iterations, 10-20 seconds
 
 ### Methods
 
-#### `process(query: str) -> ReActResult`
-
-Process complex queries using reasoning and action steps.
-
-**Parameters:**
-
-- `query` (str): Complex user query requiring multi-step reasoning
-
-**Returns:**
-
-- `ReActResult`: Result with reasoning steps and final answer
-
-**Example:**
+#### `process`
 
 ```python
-from agents.retrieval.react_retrieval import ReActRetrievalAgent
-from config import get_settings
-
-async def complex_query():
-    agent = ReActRetrievalAgent(settings=get_settings())
-    
-    result = await agent.process(
-        "Which supplier has the most contracts with payment terms over 60 days?"
-    )
-    
-    print("Reasoning Steps:")
-    for i, step in enumerate(result.reasoning_steps, 1):
-        print(f"\n{i}. {step.thought}")
-        print(f"   Action: {step.action}")
-        print(f"   Observation: {step.observation[:100]}...")
-    
-    print(f"\nFinal Answer: {result.final_answer}")
-
-asyncio.run(complex_query())
+async def process(input_data: dict[str, Any]) -> ReActResult
 ```
 
-**Output:**
+Execute multi-step reasoning to answer a query.
 
+**Input:** Dictionary with `question` (required), `max_results`, `decomposition_plan`
+
+**Returns:** `ReActResult` with steps, answer, confidence, timing
+
+**Example:**
+```python
+result = await agent.process({
+    "question": "Compare payment terms across suppliers",
+    "max_results": 50
+})
+
+print(f"Answer: {result.final_answer}")
+print(f"Iterations: {result.total_iterations}")
+print(f"Confidence: {result.confidence}")
+
+for step in result.steps:
+    print(f"Step {step.iteration}: {step.action_type}")
+    print(f"  Duration: {step.duration_ms:.0f}ms")
 ```
-Reasoning Steps:
-
-1. I need to find all contracts with payment terms > 60 days
-   Action: sparql_query
-   Observation: Found 45 contracts with payment terms > 60 days...
-
-2. Now I need to group these by supplier and count
-   Action: aggregate_by_supplier
-   Observation: Adobe: 18, Salesforce: 15, George P Johnson: 12...
-
-3. Adobe has the most contracts meeting the criteria
-   Action: verify_result
-   Observation: Confirmed: Adobe has 18 contracts with payment terms > 60 days...
-
-Final Answer: Adobe has the most contracts (18) with payment terms over 60 days.
-```
-
-### ReAct Pattern
-
-The agent follows the Reasoning + Acting pattern:
-
-1. **Thought**: Analyze what needs to be done
-2. **Action**: Execute a tool or query
-3. **Observation**: Process the result
-4. **Repeat**: Until answer is found
 
 ---
 
-## Complete Retrieval Pipeline
+## SPARQLGeneratorAgent
 
-End-to-end retrieval example:
+Convert natural language questions to SPARQL queries.
+
+### Class Definition
+
+```python
+from agents.retrieval.sparql_generator import SPARQLGeneratorAgent
+
+agent = SPARQLGeneratorAgent()
+result = await agent.generate_sparql("Find all Adobe contracts")
+```
+
+**Purpose**: Generate valid SPARQL queries from natural language with ontology awareness.
+
+**Parameters:**
+- `settings` (Settings, optional): Configuration
+- `llm` (BaseChatModel, optional): Language model
+- `sparql_store` (SPARQLStore, optional): For query execution
+
+**Key Features:**
+- Deep ontology knowledge
+- Text index optimization
+- Query explanation generation
+- Template-based optimization
+
+**Supported Query Types:**
+- Simple lookups
+- Filters and aggregations
+- Text search
+- Temporal queries
+- Complex joins
+
+**Performance:**
+- Generation: 200-500ms
+- Execution: 100ms-3s (depends on complexity)
+
+### Methods
+
+#### `generate_sparql`
+
+```python
+async def generate_sparql(
+    question: str,
+    query_type: str = "auto",
+    max_results: int = 10
+) -> SPARQLQuery
+```
+
+Generate SPARQL query from natural language.
+
+**Returns:** `SPARQLQuery` with query string, type, explanation
+
+**Example:**
+```python
+result = await agent.generate_sparql(
+    question="Find contracts with value > 1000000",
+    query_type="auto",
+    max_results=50
+)
+
+print("Generated SPARQL:")
+print(result.query)
+print(f"\nExplanation: {result.explanation}")
+
+# Execute the query
+results = await agent.execute_sparql(result.query)
+print(f"Found {len(results)} results")
+```
+
+---
+
+## QueryClassifier
+
+Classify queries to determine optimal retrieval strategy.
+
+### Class Definition
+
+```python
+from agents.retrieval.query_classifier import QueryClassifier
+
+classifier = QueryClassifier()
+classification = classifier.classify("Find contracts with 30 days notice")
+```
+
+**Purpose**: Fast rule-based classification to route queries to optimal retrieval method.
+
+**Routes:**
+- `TEXT_INDEX`: Exact keywords/numbers (fast)
+- `VECTOR`: Semantic/fuzzy queries
+- `SPARQL`: Structured queries
+- `HYBRID`: Complex multi-source queries
+
+**Key Features:**
+- Rule-based (no LLM calls)
+- Fast (< 10ms)
+- High accuracy (95%+)
+- Pattern matching
+
+**Performance:**
+- Classification: < 10ms
+- No API costs
+- Deterministic results
+
+### Methods
+
+#### `classify`
+
+```python
+def classify(query: str) -> QueryClassification
+```
+
+Classify a query to determine retrieval strategy.
+
+**Returns:** `QueryClassification` with route, confidence, reasoning
+
+**Example:**
+```python
+result = classifier.classify(
+    "Find contracts similar to Adobe master agreement"
+)
+
+print(f"Primary route: {result.primary_route}")
+print(f"Confidence: {result.confidence}")
+print(f"Reasoning: {result.reasoning}")
+print(f"Semantic intent: {result.has_semantic_intent}")
+print(f"Keywords: {result.detected_keywords}")
+```
+
+---
+
+## Complete Examples
+
+### Basic Query Processing
 
 ```python
 import asyncio
-from agents.retrieval.query_classifier import QueryClassifierAgent
-from agents.retrieval.sparql_generator import SPARQLGeneratorAgent
-from agents.retrieval.hybrid_rag import HybridRAGAgent
-from agents.retrieval.react_retrieval import ReActRetrievalAgent
-from config import get_settings
+from agents.retrieval.retrieval_orchestrator_langgraph_v2 import LangGraphRetrievalOrchestrator
 
-async def intelligent_retrieval(user_query: str):
-    """Intelligent query processing pipeline"""
-    settings = get_settings()
+async def main():
+    orchestrator = LangGraphRetrievalOrchestrator()
     
-    # Step 1: Classify query
-    print("Step 1: Classifying query...")
-    classifier = QueryClassifierAgent(settings=settings)
-    classification = await classifier.process(user_query)
-    print(f"  Type: {classification.query_type}")
-    print(f"  Complexity: {classification.complexity}")
-    
-    # Step 2: Choose retrieval strategy
-    print("\nStep 2: Retrieving information...")
-    
-    if classification.complexity == "low":
-        # Simple SPARQL query
-        generator = SPARQLGeneratorAgent(settings=settings)
-        result = await generator.process({
-            "query": user_query,
-            "query_type": classification.query_type
-        })
-        print(f"  Used: SPARQL")
-        return result
-    
-    elif classification.complexity == "medium":
-        # Hybrid retrieval
-        hybrid = HybridRAGAgent(settings=settings)
-        result = await hybrid.process(user_query)
-        print(f"  Used: Hybrid RAG")
-        return result
-    
-    else:  # high complexity
-        # Multi-step reasoning
-        react = ReActRetrievalAgent(settings=settings)
-        result = await react.process(user_query)
-        print(f"  Used: ReAct")
-        return result
-
-# Test with different queries
-queries = [
-    "Show contract ABC123",  # Low complexity
-    "Find contracts about data privacy",  # Medium complexity
-    "Which supplier has the best payment terms?"  # High complexity
-]
-
-for query in queries:
-    print(f"\n{'='*60}")
-    print(f"Query: {query}")
-    print('='*60)
-    result = asyncio.run(intelligent_retrieval(query))
-```
-
----
-
-## Answer Generation
-
-Generate natural language answers from retrieval results:
-
-```python
-from agents.retrieval.answer_generator import AnswerGeneratorAgent
-from agents.retrieval.hybrid_rag import HybridRAGAgent
-from config import get_settings
-
-async def generate_answer():
-    settings = get_settings()
-    
-    # Retrieve information
-    rag = HybridRAGAgent(settings=settings)
-    retrieval_result = await rag.process(
-        "What are the payment terms in Adobe contracts?"
+    result = await orchestrator.process_query(
+        query="What are the termination notice periods?",
+        max_results=10
     )
     
-    # Generate natural language answer
-    generator = AnswerGeneratorAgent(settings=settings)
-    answer = await generator.process({
-        "query": "What are the payment terms in Adobe contracts?",
-        "context": retrieval_result.ranked_results
-    })
+    print(f"Answer: {result['answer']}")
+    print(f"\nSources ({len(result['sources'])}):")
+    for source in result['sources'][:3]:
+        print(f"  - {source.get('title', 'N/A')}")
     
-    print(f"Answer: {answer.text}")
-    print(f"\nSources:")
-    for source in answer.sources:
-        print(f"  - {source}")
+    print(f"\nMetadata:")
+    print(f"  Processing time: {result['metadata']['processing_time']:.2f}s")
+    print(f"  KG facts: {result['metadata'].get('kg_facts_count', 0)}")
+    print(f"  Vector results: {result['metadata'].get('vector_results_count', 0)}")
 
-asyncio.run(generate_answer())
+asyncio.run(main())
 ```
 
-**Output:**
-
-```
-Answer: Based on the Adobe contracts in the system, payment terms 
-typically range from 30 to 60 days from invoice date. The Master 
-Services Agreement specifies Net 30 terms, while some Participation 
-Agreements allow up to 60 days for international transactions.
-
-Sources:
-  - Master Services Agreement - Adobe (2023-01-15)
-  - Participation Agreement US - Adobe (2023-03-20)
-  - Amendment 001 - Adobe (2023-06-10)
-```
-
----
-
-## Caching and Performance
-
-### Enable Query Caching
+### Custom Retrieval Pipeline
 
 ```python
-from agents.retrieval.hybrid_rag import HybridRAGAgent
-from config import get_settings
+from agents.retrieval.query_classifier import QueryClassifier
+from agents.retrieval.sparql_generator import SPARQLGeneratorAgent
+from agents.retrieval.react_agent_optimized import ReActRetrievalAgent
 
-# Enable caching for repeated queries
-agent = HybridRAGAgent(
-    settings=get_settings(),
-    enable_cache=True,
-    cache_ttl=3600  # 1 hour
-)
+async def custom_pipeline(query: str):
+    # Step 1: Classify
+    classifier = QueryClassifier()
+    classification = classifier.classify(query)
+    
+    print(f"Query type: {classification.primary_route}")
+    
+    # Step 2: Route
+    if classification.primary_route == "SPARQL":
+        sparql_agent = SPARQLGeneratorAgent()
+        sparql_result = await sparql_agent.generate_sparql(query)
+        results = await sparql_agent.execute_sparql(sparql_result.query)
+        return {"results": results, "method": "SPARQL"}
+    else:
+        react_agent = ReActRetrievalAgent()
+        result = await react_agent.process({"question": query})
+        return {"answer": result.final_answer, "method": "REACT"}
 
-# First call: retrieves from database
-result1 = await agent.process("Find Adobe contracts")
-
-# Second call: returns cached result (much faster)
-result2 = await agent.process("Find Adobe contracts")
+result = asyncio.run(custom_pipeline("Find high-value contracts"))
 ```
 
-### Batch Queries
-
-Process multiple queries efficiently:
+### Performance Monitoring
 
 ```python
-from agents.retrieval.hybrid_rag import HybridRAGAgent
-from config import get_settings
+import time
 
-async def batch_queries():
-    agent = HybridRAGAgent(settings=get_settings())
+async def monitor_performance():
+    orchestrator = LangGraphRetrievalOrchestrator()
     
     queries = [
-        "Show Adobe contracts",
-        "Find Salesforce agreements",
-        "List George P Johnson contracts"
+        "Simple: Show contract ABC123",
+        "Medium: Find all Adobe contracts",
+        "Complex: Compare terms across suppliers"
     ]
     
-    # Process in parallel
-    results = await asyncio.gather(*[
-        agent.process(q) for q in queries
-    ])
-    
-    for query, result in zip(queries, results):
-        print(f"{query}: {len(result.ranked_results)} results")
+    for query in queries:
+        start = time.time()
+        result = await orchestrator.process_query(query)
+        elapsed = time.time() - start
+        
+        print(f"\nQuery: {query}")
+        print(f"  Time: {elapsed:.2f}s")
+        print(f"  Answer length: {len(result['answer'])} chars")
 
-asyncio.run(batch_queries())
+asyncio.run(monitor_performance())
 ```
 
----
-
-## Error Handling
-
-Handle retrieval errors gracefully:
+### Error Handling
 
 ```python
-from agents.retrieval.hybrid_rag import HybridRAGAgent
-from config import get_settings
-
-async def safe_retrieval(query: str):
-    agent = HybridRAGAgent(settings=get_settings())
+async def safe_query(query: str):
+    orchestrator = LangGraphRetrievalOrchestrator()
     
     try:
-        result = await agent.process(query)
-        return result
-    except ConnectionError:
-        print("Database connection failed")
-        return None
+        result = await orchestrator.process_query(query)
+        return {"success": True, "result": result}
     except ValueError as e:
-        print(f"Invalid query: {e}")
-        return None
+        return {"success": False, "error": "invalid_query"}
+    except TimeoutError as e:
+        return {"success": False, "error": "timeout"}
     except Exception as e:
-        print(f"Retrieval failed: {e}")
-        return None
+        return {"success": False, "error": "unknown", "message": str(e)}
 
-result = asyncio.run(safe_retrieval("Find contracts"))
-```
-
----
-
-## Advanced Features
-
-### Custom Ranking
-
-Customize result ranking:
-
-```python
-from agents.retrieval.hybrid_rag import HybridRAGAgent
-from config import get_settings
-
-agent = HybridRAGAgent(settings=get_settings())
-
-# Custom ranking weights
-result = await agent.process(
-    query="Find important contracts",
-    ranking_weights={
-        "sparql_score": 0.4,
-        "vector_score": 0.3,
-        "recency": 0.2,
-        "importance": 0.1
-    }
-)
-```
-
-### Filter Results
-
-Apply filters to retrieval:
-
-```python
-from agents.retrieval.hybrid_rag import HybridRAGAgent
-from config import get_settings
-
-agent = HybridRAGAgent(settings=get_settings())
-
-result = await agent.process(
-    query="Find contracts",
-    filters={
-        "supplier": "Adobe",
-        "date_from": "2023-01-01",
-        "date_to": "2023-12-31",
-        "status": "active"
-    }
-)
+result = asyncio.run(safe_query("Find contracts"))
 ```
 
 ---
 
 ## Performance Tips
 
-### 1. Use Query Classification
-
-Always classify queries first to choose the right strategy:
+### 1. Cache Orchestrator Instance
 
 ```python
-# Good: Classify then retrieve
-classification = await classifier.process(query)
-if classification.complexity == "low":
-    result = await sparql_agent.process(query)
-else:
-    result = await hybrid_agent.process(query)
+from functools import lru_cache
 
-# Avoid: Always using complex retrieval
-result = await react_agent.process(query)  # Slow for simple queries!
+@lru_cache(maxsize=1)
+def get_orchestrator():
+    return LangGraphRetrievalOrchestrator()
+
+orchestrator = get_orchestrator()
 ```
 
-### 2. Limit Result Size
-
-Retrieve only what you need:
+### 2. Parallel Query Processing
 
 ```python
-result = await agent.process(
-    query="Find contracts",
-    limit=10  # Top 10 results only
+async def process_parallel(queries: list[str]):
+    orchestrator = LangGraphRetrievalOrchestrator()
+    results = await asyncio.gather(*[
+        orchestrator.process_query(q) for q in queries
+    ])
+    return results
+```
+
+### 3. Enable Query Caching
+
+```python
+from config import Settings
+
+settings = Settings(
+    enable_query_cache=True,
+    query_cache_ttl=3600
 )
-```
-
-### 3. Use Async Processing
-
-Process multiple queries in parallel:
-
-```python
-# Good: Parallel processing
-results = await asyncio.gather(*[
-    agent.process(q) for q in queries
-])
-
-# Avoid: Sequential processing
-results = []
-for q in queries:
-    results.append(await agent.process(q))  # Slow!
+orchestrator = LangGraphRetrievalOrchestrator(settings=settings)
 ```
 
 ---
 
 ## See Also
 
-- [Ingestion Agents API](ingestion.md)
-- [Storage API](../storage/sparql.md)
-- [Query & Retrieval Guide](../../guide/retrieval.md)
+- [Ingestion Agents API](ingestion.md) - Document ingestion
+- [Storage API](../storage/sparql.md) - SPARQL operations
+- [LLM Providers](../llm/providers.md) - LLM configuration
+- [Configuration Guide](../../getting-started/configuration.md) - Setup

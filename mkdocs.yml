@@ -105,14 +105,23 @@ nav:
     - SHACL & Rules Integration: guide/shacl-rules-integration.md
     - Observability: guide/observability.md
   - API Reference:
+    - Overview: api/index.md
     - Agents:
       - Ingestion: api/agents/ingestion.md
       - Retrieval: api/agents/retrieval.md
+      - Orchestrators: api/agents/orchestrators_comprehensive.md
       - Schema Evolution: api/agents/schema-evolution.md
     - Storage:
       - SPARQL Store: api/storage/sparql.md
       - Vector Store: api/storage/vector.md
-    - LLM Providers: api/llm/providers.md
+      - Object Storage: api/storage/object_storage_comprehensive.md
+    - Core:
+      - Configuration: api/core/config_comprehensive.md
+      - Artifact Store: api/core/artifact_store_comprehensive.md
+    - Models:
+      - Data Models: api/models/data_models_comprehensive.md
+    - LLM:
+      - Providers: api/llm/providers.md
   - Development:
     - Contributing: development/contributing.md
     - Testing: development/testing.md
