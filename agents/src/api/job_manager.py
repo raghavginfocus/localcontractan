@@ -23,6 +23,8 @@ class JobStatus(str, Enum):
     COMPLETED = "completed"
     FAILED = "failed"
     CANCELLED = "cancelled"
+    STOPPING  = "stopping"
+    STOPPED   = "stopped"
 
 
 class JobInfo(BaseModel):
@@ -223,3 +225,20 @@ class IngestionJobManager:
             )
             conn.commit()
             return cursor.rowcount > 0
+        
+    def mark_stopped(self, job_id: str, checkpoint: dict):
+        """Mark job as stopped and persist checkpoint for resume."""
+        timestamp = datetime.utcnow().isoformat()
+
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute("""
+                UPDATE ingestion_jobs 
+                SET status = ?, completed_at = ?, result = ?
+                WHERE job_id = ?
+            """, (
+                JobStatus.STOPPED.value,
+                timestamp,
+                json.dumps({"__checkpoint__": checkpoint}),
+                job_id
+            ))
+            conn.commit()

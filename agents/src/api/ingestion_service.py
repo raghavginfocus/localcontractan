@@ -21,6 +21,7 @@ from typing import Any, Dict, Optional
 import requests
 import os
 import tempfile
+import asyncio
 
 from fastapi import FastAPI, File, HTTPException, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -46,6 +47,12 @@ from auth import verify_api_token
 load_dotenv()
 
 logger = get_module_logger(__name__)
+
+# job_id -> asyncio.Event; .set() requests cancellation
+_cancellation_tokens: dict[str, asyncio.Event] = {}
+
+# job_id -> checkpoint dict (what's left to process)
+_job_checkpoints: dict[str, dict] = {}
 
 
 # Cloudant config
@@ -97,6 +104,24 @@ app_state = {
 
 # Initialize job manager
 job_manager = IngestionJobManager()
+
+def _register_job(job_id: str) -> asyncio.Event:
+    """Create and register a fresh cancellation token for a job."""
+    token = asyncio.Event()
+    _cancellation_tokens[job_id] = token
+    return token
+
+
+def _is_stop_requested(job_id: str) -> bool:
+    """Return True if cancellation has been requested for this job."""
+    token = _cancellation_tokens.get(job_id)
+    return token is not None and token.is_set()
+
+
+def _cleanup_job(job_id: str) -> None:
+    """Remove cancellation token after job finishes (any terminal state)."""
+    _cancellation_tokens.pop(job_id, None)
+    # Intentionally keep _job_checkpoints so /resume can still read it
 
 # -----------------------------------------------------------------------------
 # Initialize and return the COS client used for source document retrieval.
@@ -338,42 +363,48 @@ async def run_cloudant_cache_pipeline_job(
     job_id: str,
     override: bool = False,
     limit: Optional[int] = None,
+    resume_items: Optional[list] = None,
 ):
     orchestrator = app_state.get("ingestion_orchestrator")
     if not orchestrator:
         job_manager.mark_failed(job_id, "Ingestion orchestrator not initialized")
         return
+    
+    token = _register_job(job_id)
 
     try:
         job_manager.update_status(job_id, JobStatus.RUNNING)
         job_manager.update_progress(job_id, 1)
-        
         # Track timing
         start_time = datetime.now()
 
-        logger.info("=" * 80)
-        logger.info(f"📊 CLOUDANT CACHE PIPELINE STARTED")
-        logger.info(f"   Job ID: {job_id}")
-        logger.info(f"   Override: {override}")
-        logger.info(f"   Limit: {limit if limit else 'No limit'}")
-        logger.info("=" * 80)
+        if resume_items is not None:
+            docs = resume_items
 
-        # Refresh cache
-        logger.info("🔄 Refreshing CloudAnt cache...")
-        data = fetch_and_cache_view(force=True)
-        job_manager.update_progress(job_id, 15)
-        logger.info("✅ CloudAnt cache refreshed successfully")
+        else: 
+            logger.info("=" * 80)
+            logger.info(f"📊 CLOUDANT CACHE PIPELINE STARTED")
+            logger.info(f"   Job ID: {job_id}")
+            logger.info(f"   Override: {override}")
+            logger.info(f"   Limit: {limit if limit else 'No limit'}")
+            logger.info("=" * 80)
 
-        # Extract and filter documents
-        logger.info("🔍 Extracting and filtering documents...")
-        docs = _extract_doc_paths_from_cache()
-        original_count = len(docs)
-        
-        if limit:
-            docs = docs[:limit]
-            logger.info(f"📋 Limited to {limit} documents (from {original_count} total)")
-        else:
-            logger.info(f"📋 Processing all {original_count} documents")
+            # Refresh cache
+            logger.info("🔄 Refreshing CloudAnt cache...")
+            data = fetch_and_cache_view(force=True)
+            job_manager.update_progress(job_id, 15)
+            logger.info("✅ CloudAnt cache refreshed successfully")
+
+            # Extract and filter documents
+            logger.info("🔍 Extracting and filtering documents...")
+            docs = _extract_doc_paths_from_cache()
+            original_count = len(docs)
+
+            if limit:
+                docs = docs[:limit]
+                logger.info(f"📋 Limited to {limit} documents (from {original_count} total)")
+            else:
+                logger.info(f"📋 Processing all {original_count} documents")
 
         if not docs:
             logger.warning("⚠️  No documents found after filtering")
@@ -401,6 +432,21 @@ async def run_cloudant_cache_pipeline_job(
         logger.info("=" * 80)
 
         for idx, doc in enumerate(docs, start=1):
+            if _is_stop_requested(job_id):
+                 remaining = docs[idx - 1:]
+                 checkpoint = {
+                     "pipeline":         "cloudant_cache",
+                     "override":         override,
+                     "limit":            limit,
+                     "remaining_items":  remaining,
+                     "completed_so_far": results,
+                     "failed_so_far":    failed,
+                     "total_docs":       total,
+                 }
+                 _job_checkpoints[job_id] = checkpoint
+                 job_manager.mark_stopped(job_id, checkpoint)
+                 _cleanup_job(job_id)
+                 return
             doc_path = doc["Doc_Path"]
             doc_name = doc.get("Doc_Name", os.path.basename(doc_path))
             doc_id = doc.get("_id", "unknown")
@@ -560,6 +606,8 @@ async def run_cloudant_cache_pipeline_job(
         logger.error("=" * 80)
         logger.error(f"Exception details:", exc_info=True)
         job_manager.mark_failed(job_id, str(exc))
+    finally:
+        _cleanup_job(job_id)
 
 
 @asynccontextmanager
@@ -899,8 +947,116 @@ async def delete_job(job_id: str,_: bool = Depends(verify_api_token)):
     
     return {"message": f"Job {job_id} deleted successfully"}
 
+@app.post("/api/v1/ingest/job/{job_id}/stop")
+async def stop_job(job_id: str):
+    job = job_manager.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail=f"Job not found: {job_id}")
 
-async def run_ingestion_job(job_id: str, file_path: str, override: bool = False):
+    if job.status not in (JobStatus.RUNNING, JobStatus.PENDING):
+        raise HTTPException(
+            status_code=409,
+            detail=f"Job is not stoppable (current status: {job.status.value})"
+        )
+
+    token = _cancellation_tokens.get(job_id)
+    if not token:
+        raise HTTPException(
+            status_code=409,
+            detail="Job has no active cancellation token — it may have already finished."
+        )
+
+    token.set()
+    job_manager.update_status(job_id, JobStatus.STOPPING)
+    logger.info(f"Stop requested for job {job_id}")
+
+    return {
+        "job_id":      job_id,
+        "message":     "Stop signal sent. Job will finish its current document then checkpoint.",
+        "poll_status": f"/api/v1/ingest/status/{job_id}",
+    }
+
+@app.post("/api/v1/ingest/job/{job_id}/resume")
+async def resume_job(job_id: str, background_tasks: BackgroundTasks):
+    job = job_manager.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail=f"Job not found: {job_id}")
+
+    if job.status != JobStatus.STOPPED:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Only STOPPED jobs can be resumed (current status: {job.status.value})"
+        )
+
+    checkpoint = _job_checkpoints.get(job_id)
+    if not checkpoint and isinstance(job.result, dict):
+        checkpoint = job.result.get("__checkpoint__")
+
+    if not checkpoint:
+        raise HTTPException(
+            status_code=422,
+            detail="No checkpoint found. Only jobs stopped via /stop can be resumed."
+        )
+
+    pipeline = checkpoint.get("pipeline")
+    override = checkpoint.get("override", False)
+
+    if pipeline == "cloudant_cache":
+        remaining = checkpoint.get("remaining_items", [])
+        if not remaining:
+            raise HTTPException(status_code=422, detail="Checkpoint has no remaining items.")
+
+        new_job_id = job_manager.create_job({
+            "source":       "cloudant_cache_pipeline_resume",
+            "resumed_from": job_id,
+            "override":     override,
+            "remaining":    len(remaining),
+        })
+        background_tasks.add_task(
+            run_cloudant_cache_pipeline_job,
+            job_id=new_job_id,
+            override=override,
+            resume_items=remaining,
+        )
+
+    elif pipeline in ("minio", "directory"):
+        remaining   = checkpoint.get("resume_files", [])
+        source_path = checkpoint.get("file_path", "")
+        if not remaining:
+            raise HTTPException(status_code=422, detail="Checkpoint has no remaining files.")
+
+        new_job_id = job_manager.create_job({
+            "source":       f"{pipeline}_resume",
+            "resumed_from": job_id,
+            "file_path":    source_path,
+            "override":     override,
+            "remaining":    len(remaining),
+        })
+        background_tasks.add_task(
+            run_ingestion_job,
+            job_id=new_job_id,
+            file_path=source_path,
+            override=override,
+            resume_files=remaining,
+        )
+
+    else:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Unknown pipeline in checkpoint: '{pipeline}'"
+        )
+
+    return {
+        "original_job_id": job_id,
+        "new_job_id":      new_job_id,
+        "status":          "pending",
+        "remaining_items": len(remaining),
+        "message":         "Resume job created. Original checkpoint preserved.",
+        "poll_status":     f"/api/v1/ingest/status/{new_job_id}",
+    }
+
+
+async def run_ingestion_job(job_id: str, file_path: str, override: bool = False, resume_files: Optional[list] = None):
     """
     Background task to run ingestion job.
     
@@ -915,6 +1071,8 @@ async def run_ingestion_job(job_id: str, file_path: str, override: bool = False)
     if not orchestrator:
         job_manager.mark_failed(job_id, "Ingestion orchestrator not initialized")
         return
+    
+    token = _register_job(job_id)
     
     try:
         # Mark as running
@@ -1019,24 +1177,46 @@ async def run_ingestion_job(job_id: str, file_path: str, override: bool = False)
             cache_root = Path("/app/data/minio_input_cache") / prefix_dir.rstrip("/")
             cache_root.mkdir(parents=True, exist_ok=True)
 
-            local_files: list[str] = []
-            skipped_unchanged = 0
-            for key in doc_keys:
-                meta = storage.get_object_metadata(key)
-                etag = meta.get("etag", "")
-                identity = f"{storage.bucket}:{key}:{etag}"
-                identity_hash = registry.compute_identity_hash(identity)
-                already, rec = registry.is_processed(content_hash=identity_hash)
-                if already and rec and rec.status == ProcessingStatus.COMPLETED and not override:
-                    skipped_unchanged += 1
-                    continue
+            if resume_files is not None:
+                local_files = resume_files
+                skipped_unchanged = 0
+            else:
+                local_files: list[str] = []
+                skipped_unchanged = 0
+                for key in doc_keys:
+                    meta = storage.get_object_metadata(key)
+                    etag = meta.get("etag", "")
+                    identity = f"{storage.bucket}:{key}:{etag}"
+                    identity_hash = registry.compute_identity_hash(identity)
+                    already, rec = registry.is_processed(content_hash=identity_hash)
+                    if already and rec and rec.status == ProcessingStatus.COMPLETED and not override:
+                        skipped_unchanged += 1
+                        continue
+                    rel = key[len(prefix_dir):] if key.startswith(prefix_dir) else Path(key).name
+                    local_path = cache_root / rel
+                    local_path.parent.mkdir(parents=True, exist_ok=True)
+                    if (not local_path.exists()) or override:
+                        local_path.write_bytes(storage.download(key))
+                    local_files.append(str(local_path))
 
-                rel = key[len(prefix_dir):] if key.startswith(prefix_dir) else Path(key).name
-                local_path = cache_root / rel
-                local_path.parent.mkdir(parents=True, exist_ok=True)
-                if (not local_path.exists()) or override:
-                    local_path.write_bytes(storage.download(key))
-                local_files.append(str(local_path))
+            # local_files: list[str] = []
+            # skipped_unchanged = 0
+            # for key in doc_keys:
+            #     meta = storage.get_object_metadata(key)
+            #     etag = meta.get("etag", "")
+            #     identity = f"{storage.bucket}:{key}:{etag}"
+            #     identity_hash = registry.compute_identity_hash(identity)
+            #     already, rec = registry.is_processed(content_hash=identity_hash)
+            #     if already and rec and rec.status == ProcessingStatus.COMPLETED and not override:
+            #         skipped_unchanged += 1
+            #         continue
+
+            #     rel = key[len(prefix_dir):] if key.startswith(prefix_dir) else Path(key).name
+            #     local_path = cache_root / rel
+            #     local_path.parent.mkdir(parents=True, exist_ok=True)
+            #     if (not local_path.exists()) or override:
+            #         local_path.write_bytes(storage.download(key))
+            #     local_files.append(str(local_path))
 
             if not local_files:
                 job_manager.mark_completed(job_id, {
@@ -1083,13 +1263,43 @@ async def run_ingestion_job(job_id: str, file_path: str, override: bool = False)
                 except Exception as e:
                     logger.warning("progress_callback_failed", error=str(e))
 
-            ingestion_results = await orchestrator.ingest_batch(
-                items,
-                max_concurrent=10,
-                progress_callback=_progress_callback,
-                override=override,
-                job_id=job_id,
-            )
+            ingestion_results = []
+            for idx, local_path in enumerate(local_files, start=1):
+            
+                if _is_stop_requested(job_id):
+                    remaining = local_files[idx - 1:]
+                    checkpoint = {
+                        "pipeline":     "minio",
+                        "file_path":    file_path,
+                        "override":     override,
+                        "resume_files": remaining,
+                    }
+                    _job_checkpoints[job_id] = checkpoint
+                    job_manager.mark_stopped(job_id, checkpoint)
+                    _cleanup_job(job_id)
+                    return
+            
+                try:
+                    r = await orchestrator.ingest(
+                        file_path=local_path,
+                        override=override,
+                        job_id=job_id,
+                    )
+                    ingestion_results.append(r)
+                except Exception as exc:
+                    logger.error(f"Failed to ingest {local_path}: {exc}")
+                    ingestion_results.append({"success": False, "error": str(exc)})
+            
+                progress = int((idx / max(len(local_files), 1)) * 100)
+                job_manager.update_progress(job_id, progress)
+
+            # ingestion_results = await orchestrator.ingest_batch(
+            #     items,
+            #     max_concurrent=10,
+            #     progress_callback=_progress_callback,
+            #     override=override,
+            #     job_id=job_id,
+            # )
 
             # Register completion by (key, etag) identity so future runs can skip
             # without downloading.
@@ -1166,16 +1376,31 @@ async def run_ingestion_job(job_id: str, file_path: str, override: bool = False)
             # Scan directory for documents
             from agents.ingestion.directory_scanner import DirectoryScannerAgent
             scanner = DirectoryScannerAgent()
-            scan_result = await scanner.process(str(path))
-            files = [f.path for f in scan_result.discovered_files if f.category != "unsupported"]
+
+            if resume_files is not None:
+                files = resume_files
+            else:
+                scan_result = await scanner.process(str(path))
+                files = [f.path for f in scan_result.discovered_files if f.category != "unsupported"]
             
-            if not files:
-                job_manager.mark_completed(job_id, {
-                    "status": "success",
-                    "message": "No files found in directory",
-                    "files_processed": 0
-                })
-                return
+                if not files:
+                    job_manager.mark_completed(job_id, {
+                        "status": "success",
+                        "message": "No files found in directory",
+                        "files_processed": 0
+                    })
+                    return
+
+            # scan_result = await scanner.process(str(path))
+            # files = [f.path for f in scan_result.discovered_files if f.category != "unsupported"]
+            
+            # if not files:
+            #     job_manager.mark_completed(job_id, {
+            #         "status": "success",
+            #         "message": "No files found in directory",
+            #         "files_processed": 0
+            #     })
+            #     return
             
             # Process files in batch
             items = [{"file_path": f} for f in files]
@@ -1189,12 +1414,42 @@ async def run_ingestion_job(job_id: str, file_path: str, override: bool = False)
                 except Exception as e:
                     logger.warning("dir_progress_callback_failed", error=str(e))
 
-            results = await orchestrator.ingest_batch(
-                items,
-                max_concurrent=10,
-                progress_callback=_dir_progress_callback,
-                job_id=job_id,
-            )
+            results = []
+            for idx, f in enumerate(files, start=1):
+            
+                if _is_stop_requested(job_id):
+                    remaining = files[idx - 1:]
+                    checkpoint = {
+                        "pipeline":     "directory",
+                        "file_path":    file_path,
+                        "override":     override,
+                        "resume_files": remaining,
+                    }
+                    _job_checkpoints[job_id] = checkpoint
+                    job_manager.mark_stopped(job_id, checkpoint)
+                    _cleanup_job(job_id)
+                    return
+
+                try:
+                    r = await orchestrator.ingest(
+                        file_path=f,
+                        override=override,
+                        job_id=job_id,
+                    )
+                    results.append(r)
+                except Exception as exc:
+                    logger.error(f"Failed to ingest {f}: {exc}")
+                    results.append({"success": False, "error": str(exc)})
+
+                progress = int((idx / max(len(files), 1)) * 100)
+                job_manager.update_progress(job_id, progress)
+
+            # results = await orchestrator.ingest_batch(
+            #     items,
+            #     max_concurrent=10,
+            #     progress_callback=_dir_progress_callback,
+            #     job_id=job_id,
+            # )
             
             # Aggregate results (results are IngestionResult objects)
             successful = sum(
@@ -1238,7 +1493,8 @@ async def run_ingestion_job(job_id: str, file_path: str, override: bool = False)
         error_msg = str(e)
         job_manager.mark_failed(job_id, error_msg)
         logger.error(f"Failed ingestion job {job_id}: {error_msg}")
-
+    finally:
+        _cleanup_job(job_id)
 
 @app.get("/api/v1/metrics")
 async def get_metrics(_: bool = Depends(verify_api_token)):
