@@ -78,8 +78,8 @@ class MonetaryAmount(BaseModel):
     amount_type: str = Field(
         description="Type: ContractValue, PenaltyAmount, Threshold, etc."
     )
-    value: float | None = Field(
-        default=None, description="Numeric value if extractable"
+    value: float | str | None = Field(
+        default=None, description="Numeric value if extractable, or text description if not"
     )
     currency: str = Field(default="USD", description="Currency code")
     description: str = Field(description="Context of the amount")
@@ -87,6 +87,24 @@ class MonetaryAmount(BaseModel):
         default=False, description="Whether this is an estimate"
     )
     reference_clause: str | None = Field(default=None, description="Source clause")
+    
+    @field_validator('value', mode='before')
+    @classmethod
+    def parse_value(cls, v):
+        """Parse value - accept float, string, or None."""
+        if v is None:
+            return None
+        if isinstance(v, (int, float)):
+            return float(v)
+        # If it's a string that can't be parsed as number, keep it as string
+        # This handles cases like "double of the contract value"
+        if isinstance(v, str):
+            try:
+                return float(v.replace(',', '').replace('$', '').strip())
+            except (ValueError, AttributeError):
+                # Keep as string if not parseable
+                return v
+        return v
     
     @field_validator("currency", mode="before")
     @classmethod

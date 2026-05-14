@@ -64,11 +64,11 @@ class IngestionConfig(BaseModel):
     save_artifacts: bool = True  # Save intermediate files for transparency
     # Use data/generated for all artifacts (consistent with schema evolution agents)
     artifact_dir: str = "data/generated"  # Directory for artifacts
-    generate_owl_extensions: bool = True  # Generate OWL for new concepts
-    generate_rules: bool = True  # Generate inference rules for patterns
-    generate_shacl: bool = True  # Generate SHACL validation shapes
+    generate_owl_extensions: bool = False  # Disabled - using custom ontology files
+    generate_rules: bool = False  # Disabled - using custom ontology files
+    generate_shacl: bool = False  # Disabled - using custom ontology files
     enable_pattern_detection: bool = True  # Enable comprehensive pattern detection
-    enable_schema_governance: bool = True  # Enable schema versioning and conflict resolution
+    enable_schema_governance: bool = False  # Disabled - using custom ontology files
 
 
 class IngestionStep(BaseModel):
@@ -89,6 +89,12 @@ class IngestionResult(BaseModel):
     document_id: str = Field(description="ID of the ingested document")
     success: bool = Field(description="Whether ingestion completed successfully")
     steps: list[IngestionStep] = Field(default_factory=list, description="Details of each step")
+    
+    # CloudAnt metadata (NEW)
+    cloudant_metadata: dict[str, Any] = Field(
+        default_factory=dict,
+        description="CloudAnt metadata for this document (all fields from cached_view.json)"
+    )
     
     # Summary metrics
     clauses_extracted: int = Field(default=0)
@@ -156,6 +162,7 @@ class IngestionOrchestrator:
         self,
         config: IngestionConfig | None = None,
         settings: Settings | None = None,
+        cacheview_path: str | None = None,
     ):
         """
         Initialize the ingestion orchestrator.
@@ -163,6 +170,7 @@ class IngestionOrchestrator:
         Args:
             config: Pipeline configuration
             settings: Application settings
+            cacheview_path: Optional path to cacheview.json for metadata loading
         """
         self.settings = settings or get_settings()
         
@@ -177,6 +185,25 @@ class IngestionOrchestrator:
             )
         self.config = config
         self.logger = logger.bind(orchestrator="IngestionOrchestrator")
+        
+        # Initialize metadata loader for contract metadata from cacheview.json
+        from agents.ingestion.metadata_loader import MetadataLoader
+        self.metadata_loader: MetadataLoader | None = None
+        if cacheview_path:
+            try:
+                self.metadata_loader = MetadataLoader(cacheview_path)
+                if self.metadata_loader.has_metadata():
+                    self.logger.info(
+                        "Loaded contract metadata from cacheview.json",
+                        total_contracts=len(self.metadata_loader.get_all_metadata())
+                    )
+                else:
+                    self.logger.warning("cacheview.json found but no metadata loaded")
+            except Exception as e:
+                self.logger.warning(
+                    "Failed to load cacheview.json, continuing without metadata",
+                    error=str(e)
+                )
         
         # Initialize resource manager for rate limiting and coordination
         self.resource_manager = get_resource_manager(self.settings)
@@ -306,7 +333,7 @@ class IngestionOrchestrator:
         Returns:
             Result from operation, or None if all recovery attempts fail
         """
-        recovery_agent = ErrorRecoveryAgent(max_retries=3)
+        recovery_agent = ErrorRecoveryAgent(max_retries=1)
         
         try:
             # Try the operation first
@@ -400,6 +427,7 @@ class IngestionOrchestrator:
         document_id: str | None = None,
         override: bool = False,
         job_id: str | None = None,
+        cloudant_metadata: dict[str, Any] | None = None,
     ) -> IngestionResult:
         """
         Process a contract document through the full pipeline.
@@ -409,14 +437,31 @@ class IngestionOrchestrator:
             text: Or raw text content
             document_id: Optional ID (auto-generated if not provided)
             override: If True, reprocess even if document was already processed
+            job_id: Optional job ID for tracking
+            cloudant_metadata: Optional CloudAnt metadata for this document (all fields)
+                              If not provided and metadata_loader is available, will auto-load from cacheview.json
             
         Returns:
             IngestionResult with complete status
         """
+        # Auto-load metadata from cacheview.json if available and not provided
+        contract_metadata = None
+        if not cloudant_metadata and self.metadata_loader and file_path:
+            contract_metadata = self.metadata_loader.get_metadata_by_path(file_path)
+            if contract_metadata:
+                self.logger.info(
+                    "Auto-loaded contract metadata from cacheview.json",
+                    file=Path(file_path).name,
+                    contract_id=contract_metadata.contract_id,
+                    supplier=contract_metadata.supplier_name
+                )
+                # Convert to dict for backward compatibility
+                cloudant_metadata = contract_metadata.to_dict()
+        
         # Check for duplicate if registry enabled and not overriding
         if self.document_registry and file_path and not override:
             is_processed, record = self.document_registry.is_processed(file_path=file_path)
-            if is_processed and record.status == self.ProcessingStatus.COMPLETED:
+            if is_processed and record and record.status == self.ProcessingStatus.COMPLETED:
                 self.logger.info(
                     "⏭️  Document already processed - skipping",
                     file_path=file_path,
@@ -459,6 +504,7 @@ class IngestionOrchestrator:
             document_id=document_id,
             success=False,
             started_at=datetime.now(),
+            cloudant_metadata=cloudant_metadata or {},
         )
         # Stamp active schema version if known
         if self.active_schema_version_id and not result.schema_version:
@@ -1369,7 +1415,7 @@ class IngestionOrchestrator:
         entities: EntityExtractionResult | None,
         sections: list[dict] | None = None,
     ) -> str | None:
-        """Step 6: RDF generation."""
+        """Step 6: RDF generation with contract metadata."""
         step = IngestionStep(step_name="rdf_generation", started_at=datetime.now())
         logger.info("=" * 60)
         logger.info(f"STEP 6: RDF GENERATION - {document_id}")
@@ -1379,53 +1425,72 @@ class IngestionOrchestrator:
             # Build contract_info from extracted entities
             contract_info = {}
             
-            if entities:
-                # Extract contract value from amounts
-                contract_value = None
-                for amount in entities.amounts:
-                    if amount.amount_type.lower() in ["contractvalue", "contract_value", "total_value", "totalvalue"]:
-                        contract_value = amount.value
-                        break
+            # PRIORITY: Use cacheview.json metadata if available
+            if result.cloudant_metadata:
+                from agents.ingestion.metadata_loader import ContractMetadata
+                # Convert dict back to ContractMetadata if needed
+                if isinstance(result.cloudant_metadata, dict):
+                    contract_metadata = ContractMetadata.from_cacheview_entry(result.cloudant_metadata)
+                else:
+                    contract_metadata = result.cloudant_metadata
                 
-                if contract_value:
-                    contract_info["value"] = contract_value
+                contract_info["metadata"] = contract_metadata
+                contract_info["id"] = contract_metadata.contract_id or document_id
+                contract_info["title"] = contract_metadata.doc_name or f"Contract {document_id}"
                 
-                # Extract dates
-                for date in entities.dates:
-                    if date.date_type.lower() in ["effectivedate", "effective_date", "start_date"]:
-                        contract_info["effective_date"] = date.date_value
-                    elif date.date_type.lower() in ["expirationdate", "expiration_date", "end_date", "termination_date"]:
-                        contract_info["expiration_date"] = date.date_value
-                
-                # Extract jurisdiction
-                if entities.jurisdictions:
-                    # Use first jurisdiction
-                    jurisdiction = entities.jurisdictions[0].name
-                    # Map common names to ontology instances
-                    jurisdiction_map = {
-                        "California": "California",
-                        "Delaware": "Delaware",
-                        "New York": "NewYork",
-                        "State of California": "California",
-                        "State of Delaware": "Delaware",
-                    }
-                    contract_info["jurisdiction"] = jurisdiction_map.get(jurisdiction, jurisdiction.replace(" ", ""))
-                
-                # Extract parties
-                if entities.parties:
-                    contract_info["parties"] = [
-                        {
-                            "id": p.party_id,
-                            "name": p.name,
-                            "role": p.role,
+                logger.info(f"  ✓ Using metadata from cacheview.json:")
+                logger.info(f"    Contract ID: {contract_metadata.contract_id}")
+                logger.info(f"    Supplier: {contract_metadata.supplier_name}")
+                logger.info(f"    Owner: {contract_metadata.owner_name}")
+            else:
+                # Fallback: Build from extracted entities
+                if entities:
+                    # Extract contract value from amounts
+                    contract_value = None
+                    for amount in entities.amounts:
+                        if amount.amount_type.lower() in ["contractvalue", "contract_value", "total_value", "totalvalue"]:
+                            contract_value = amount.value
+                            break
+                    
+                    if contract_value:
+                        contract_info["value"] = contract_value
+                    
+                    # Extract dates
+                    for date in entities.dates:
+                        if date.date_type.lower() in ["effectivedate", "effective_date", "start_date"]:
+                            contract_info["effective_date"] = date.date_value
+                        elif date.date_type.lower() in ["expirationdate", "expiration_date", "end_date", "termination_date"]:
+                            contract_info["expiration_date"] = date.date_value
+                    
+                    # Extract jurisdiction
+                    if entities.jurisdictions:
+                        # Use first jurisdiction
+                        jurisdiction = entities.jurisdictions[0].name
+                        # Map common names to ontology instances
+                        jurisdiction_map = {
+                            "California": "California",
+                            "Delaware": "Delaware",
+                            "New York": "NewYork",
+                            "State of California": "California",
+                            "State of Delaware": "Delaware",
                         }
-                        for p in entities.parties
-                    ]
-            
-            # Add document metadata
-            contract_info["id"] = document_id.replace("doc_", "Contract_")
-            contract_info["title"] = entities.contract_title if entities and entities.contract_title else f"Contract {document_id}"
-            contract_info["status"] = "Active"
+                        contract_info["jurisdiction"] = jurisdiction_map.get(jurisdiction, jurisdiction.replace(" ", ""))
+                    
+                    # Extract parties
+                    if entities.parties:
+                        contract_info["parties"] = [
+                            {
+                                "id": p.party_id,
+                                "name": p.name,
+                                "role": p.role,
+                            }
+                            for p in entities.parties
+                        ]
+                
+                # Add document metadata
+                contract_info["id"] = document_id.replace("doc_", "Contract_")
+                contract_info["title"] = entities.contract_title if entities and entities.contract_title else f"Contract {document_id}"
+                contract_info["status"] = "Active"
             
             rdf_input: dict[str, Any] = {
                 "document_id": document_id,
@@ -1634,15 +1699,30 @@ class IngestionOrchestrator:
         rdf_uris: dict[str, str] | None = None,
         source_pipeline: str = "legacy",
     ) -> None:
-        """Step 10: Vector indexing with RDF URI linking."""
+        """Step 10: Vector indexing with RDF URI linking and contract metadata."""
         step = IngestionStep(step_name="vector_indexing", started_at=datetime.now())
         
         try:
+            # Prepare contract metadata for Milvus
+            contract_metadata = None
+            if result.cloudant_metadata:
+                from agents.ingestion.metadata_loader import ContractMetadata
+                # Convert dict to ContractMetadata if needed
+                if isinstance(result.cloudant_metadata, dict):
+                    contract_metadata = ContractMetadata.from_cacheview_entry(result.cloudant_metadata)
+                else:
+                    contract_metadata = result.cloudant_metadata
+                
+                logger.info(f"  ✓ Including metadata in vector index:")
+                logger.info(f"    Contract ID: {contract_metadata.contract_id}")
+                logger.info(f"    Supplier: {contract_metadata.supplier_name}")
+            
             index_result = await self.vector_agent.process({
                 "clauses": clauses,
                 "contract_id": document_id,
                 "document_id": document_id,
                 "rdf_uris": rdf_uris or {},
+                "contract_metadata": contract_metadata,  # ✅ Pass metadata to Milvus
                 "source_pipeline": source_pipeline,
             })
             
@@ -1657,7 +1737,7 @@ class IngestionOrchestrator:
             
         except Exception as e:
             step.error = str(e)
-            self.logger.warning(f"Vector indexing failed: {e}")
+            self.logger.warning("Vector indexing failed", error=str(e), exc_info=True)
         finally:
             step.completed_at = datetime.now()
             step.duration_ms = (step.completed_at - step.started_at).total_seconds() * 1000

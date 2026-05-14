@@ -129,29 +129,26 @@ class MilvusStore(VectorStore):
         raise last_err if last_err else RuntimeError("Failed to connect to Milvus")
 
     def _ensure_collection(self) -> None:
-        """Create collection if it doesn't exist."""
+        """Create collection if it doesn't exist with full metadata support."""
         if utility.has_collection(self.collection_name):
             self.collection = Collection(self.collection_name)
             self.collection.load()
             logger.debug("Loaded existing collection", collection=self.collection_name)
             return
 
-        # Define schema with RDF URI linking + summary bundle + single embedding
+        # Define schema with RDF URI linking + summary bundle + CONTRACT METADATA + single embedding
         # (embedding computed from summary + key_points + structured_summary)
         fields = [
+            # Primary key
             FieldSchema(
                 name="id",
                 dtype=DataType.VARCHAR,
                 is_primary=True,
                 max_length=128,
             ),
+            # Clause identifiers
             FieldSchema(
                 name="clause_id",
-                dtype=DataType.VARCHAR,
-                max_length=128,
-            ),
-            FieldSchema(
-                name="contract_id",
                 dtype=DataType.VARCHAR,
                 max_length=128,
             ),
@@ -160,6 +157,7 @@ class MilvusStore(VectorStore):
                 dtype=DataType.VARCHAR,
                 max_length=64,
             ),
+            # Clause content
             FieldSchema(
                 name="text",
                 dtype=DataType.VARCHAR,
@@ -183,6 +181,7 @@ class MilvusStore(VectorStore):
                 max_length=16384,
                 description="Structured summary serialized as JSON",
             ),
+            # RDF linking
             FieldSchema(
                 name="rdf_uri",
                 dtype=DataType.VARCHAR,
@@ -195,6 +194,100 @@ class MilvusStore(VectorStore):
                 max_length=512,
                 description="Named graph URI for isolation",
             ),
+            
+            # ===== CONTRACT METADATA FROM CACHEVIEW.JSON =====
+            FieldSchema(
+                name="contract_id",
+                dtype=DataType.VARCHAR,
+                max_length=200,
+                description="Business Contract ID from cacheview.json",
+            ),
+            FieldSchema(
+                name="doc_id",
+                dtype=DataType.VARCHAR,
+                max_length=200,
+                description="Document ID from cacheview.json",
+            ),
+            FieldSchema(
+                name="project_name",
+                dtype=DataType.VARCHAR,
+                max_length=200,
+                description="Project name",
+            ),
+            FieldSchema(
+                name="parent_contract",
+                dtype=DataType.VARCHAR,
+                max_length=200,
+                description="Parent contract ID",
+            ),
+            FieldSchema(
+                name="doc_name",
+                dtype=DataType.VARCHAR,
+                max_length=500,
+                description="Original document filename",
+            ),
+            FieldSchema(
+                name="doc_type",
+                dtype=DataType.VARCHAR,
+                max_length=100,
+                description="Document type",
+            ),
+            FieldSchema(
+                name="status",
+                dtype=DataType.VARCHAR,
+                max_length=100,
+                description="Contract status",
+            ),
+            FieldSchema(
+                name="supplier_name",
+                dtype=DataType.VARCHAR,
+                max_length=500,
+                description="Supplier/vendor name",
+            ),
+            FieldSchema(
+                name="supplier_id",
+                dtype=DataType.VARCHAR,
+                max_length=200,
+                description="Supplier ID",
+            ),
+            FieldSchema(
+                name="owner_name",
+                dtype=DataType.VARCHAR,
+                max_length=200,
+                description="Contract owner name",
+            ),
+            FieldSchema(
+                name="owner_id",
+                dtype=DataType.VARCHAR,
+                max_length=200,
+                description="Contract owner ID/email",
+            ),
+            FieldSchema(
+                name="effective_date",
+                dtype=DataType.VARCHAR,
+                max_length=100,
+                description="Contract effective date",
+            ),
+            FieldSchema(
+                name="expiration_date",
+                dtype=DataType.VARCHAR,
+                max_length=100,
+                description="Contract expiration date",
+            ),
+            FieldSchema(
+                name="agreement_type",
+                dtype=DataType.VARCHAR,
+                max_length=500,
+                description="Type of agreement",
+            ),
+            FieldSchema(
+                name="business_unit",
+                dtype=DataType.VARCHAR,
+                max_length=200,
+                description="Business unit",
+            ),
+            
+            # DocTags metadata (from Docling pipeline)
             FieldSchema(
                 name="section_title",
                 dtype=DataType.VARCHAR,
@@ -216,9 +309,10 @@ class MilvusStore(VectorStore):
             FieldSchema(
                 name="source_pipeline",
                 dtype=DataType.VARCHAR,
-                max_length=16,
+                max_length=32,
                 description="'docling' or 'legacy' — which ingestion pipeline produced this",
             ),
+            # Vector embedding
             FieldSchema(
                 name="embedding",
                 dtype=DataType.FLOAT_VECTOR,
@@ -229,7 +323,7 @@ class MilvusStore(VectorStore):
 
         schema = CollectionSchema(
             fields=fields,
-            description="Contract clause embeddings for semantic search",
+            description="Contract clauses with full metadata from cacheview.json for semantic search",
         )
 
         # Create collection
@@ -248,11 +342,39 @@ class MilvusStore(VectorStore):
             field_name="embedding",
             index_params=index_params,
         )
+        
+        # Create scalar indexes for metadata fields (for fast filtering)
+        scalar_index_fields = [
+            "contract_id",      # Business Contract ID
+            "clause_type",      # Clause type filtering
+            "supplier_name",    # Supplier filtering
+            "owner_id",         # Owner filtering
+            "agreement_type",   # Agreement type filtering
+        ]
+        
+        for field_name in scalar_index_fields:
+            try:
+                self.collection.create_index(
+                    field_name=field_name,
+                    index_params={"index_type": "INVERTED"}
+                )
+                logger.debug(f"Created scalar index on {field_name}")
+            except Exception as e:
+                logger.warning(
+                    f"Could not create index on {field_name}: {e}",
+                    field=field_name,
+                    error=str(e)
+                )
 
         # Load collection into memory
         self.collection.load()
 
-        logger.info("Created new Milvus collection", collection=self.collection_name)
+        logger.info(
+            "Created new Milvus collection with metadata support",
+            collection=self.collection_name,
+            total_fields=len(fields),
+            metadata_fields=15,  # Number of contract metadata fields
+        )
 
     def search(
         self,
@@ -354,10 +476,9 @@ class MilvusStore(VectorStore):
         if not clauses:
             return 0
 
-        # Prepare data
+        # Prepare data for ALL fields (basic + metadata)
         ids = []
         clause_ids = []
-        contract_ids = []
         clause_types = []
         texts = []
         summaries = []
@@ -365,10 +486,30 @@ class MilvusStore(VectorStore):
         structured_summaries = []
         rdf_uris = []
         graph_uris = []
+        
+        # Contract metadata fields (from cacheview.json)
+        contract_ids = []
+        doc_ids = []
+        project_names = []
+        parent_contracts = []
+        doc_names = []
+        doc_types = []
+        statuses = []
+        supplier_names = []
+        supplier_ids = []
+        owner_names = []
+        owner_ids = []
+        effective_dates = []
+        expiration_dates = []
+        agreement_types = []
+        business_units = []
+        
+        # DocTags metadata
         section_titles = []
         has_tables = []
         page_ranges = []
         source_pipelines = []
+        
         embeddings = []
 
         # Build embedding text: summary + key metadata (optimized for semantic search)
@@ -413,9 +554,9 @@ class MilvusStore(VectorStore):
             clause_id = clause["clause_id"]
             text = clause["text"]
 
+            # Basic fields
             ids.append(f"{clause_id}_{hash(text) % 10000}")
             clause_ids.append(clause_id)
-            contract_ids.append(clause.get("contract_id", ""))
             clause_types.append(clause.get("clause_type", ""))
             texts.append(text[:65000])
             summaries.append((clause.get("summary") or "")[:4095])
@@ -423,24 +564,77 @@ class MilvusStore(VectorStore):
             structured_summaries.append((clause.get("structured_summary") or "")[:16383])
             rdf_uris.append(clause.get("rdf_uri", ""))
             graph_uris.append(clause.get("graph_uri", ""))
+            
+            # Contract metadata fields (from cacheview.json)
+            contract_ids.append((clause.get("contract_id") or "")[:199])
+            doc_ids.append((clause.get("doc_id") or "")[:199])
+            project_names.append((clause.get("project_name") or "")[:199])
+            parent_contracts.append((clause.get("parent_contract") or "")[:199])
+            doc_names.append((clause.get("doc_name") or "")[:499])
+            doc_types.append((clause.get("doc_type") or "")[:99])
+            statuses.append((clause.get("status") or "")[:99])
+            supplier_names.append((clause.get("supplier_name") or "")[:499])
+            supplier_ids.append((clause.get("supplier_id") or "")[:199])
+            owner_names.append((clause.get("owner_name") or "")[:199])
+            owner_ids.append((clause.get("owner_id") or "")[:199])
+            effective_dates.append((clause.get("effective_date") or "")[:99])
+            expiration_dates.append((clause.get("expiration_date") or "")[:99])
+            agreement_types.append((clause.get("agreement_type") or "")[:499])
+            business_units.append((clause.get("business_unit") or "")[:199])
+            
+            # DocTags metadata
             section_titles.append((clause.get("section_title") or "")[:511])
             has_tables.append(clause.get("has_table", "false"))
             page_ranges.append((clause.get("page_range") or "")[:31])
             source_pipelines.append((clause.get("source_pipeline") or "legacy")[:15])
+            
             embeddings.append(all_embeddings[i].tolist())
 
+        # Data array MUST match the order of fields in schema definition
         data = [
-            ids, clause_ids, contract_ids, clause_types,
-            texts, summaries, key_points_list, structured_summaries,
-            rdf_uris, graph_uris,
-            section_titles, has_tables, page_ranges, source_pipelines,
-            embeddings,
+            ids,                    # 1. id (primary key)
+            clause_ids,             # 2. clause_id
+            clause_types,           # 3. clause_type
+            texts,                  # 4. text
+            summaries,              # 5. summary
+            key_points_list,        # 6. key_points
+            structured_summaries,   # 7. structured_summary
+            rdf_uris,               # 8. rdf_uri
+            graph_uris,             # 9. graph_uri
+            # Contract metadata (15 fields)
+            contract_ids,           # 10. contract_id
+            doc_ids,                # 11. doc_id
+            project_names,          # 12. project_name
+            parent_contracts,       # 13. parent_contract
+            doc_names,              # 14. doc_name
+            doc_types,              # 15. doc_type
+            statuses,               # 16. status
+            supplier_names,         # 17. supplier_name
+            supplier_ids,           # 18. supplier_id
+            owner_names,            # 19. owner_name
+            owner_ids,              # 20. owner_id
+            effective_dates,        # 21. effective_date
+            expiration_dates,       # 22. expiration_date
+            agreement_types,        # 23. agreement_type
+            business_units,         # 24. business_unit
+            # DocTags metadata (4 fields)
+            section_titles,         # 25. section_title
+            has_tables,             # 26. has_table
+            page_ranges,            # 27. page_range
+            source_pipelines,       # 28. source_pipeline
+            embeddings,             # 29. embedding
         ]
 
         self.collection.insert(data)
         self.collection.flush()
 
-        logger.info("Batch inserted clauses", count=len(clauses))
+        logger.info(
+            "Batch inserted clauses with full metadata",
+            count=len(clauses),
+            fields=len(data),
+            sample_contract_id=contract_ids[0] if contract_ids else "N/A",
+            sample_supplier=supplier_names[0] if supplier_names else "N/A",
+        )
         return len(clauses)
 
     def delete_by_contract(self, contract_id: str) -> int:

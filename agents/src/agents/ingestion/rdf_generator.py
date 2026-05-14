@@ -8,6 +8,7 @@ Generates:
 - Clause entities with rdfs:label and proc:rawText
 - Structured properties (notice periods, values, dates)
 - Relationships (hasClause, hasParty, etc.)
+- Full contract metadata from cacheview.json
 """
 
 from datetime import datetime
@@ -29,6 +30,7 @@ from agents.ingestion.obligation_risk import (
     Obligation,
     Risk
 )
+from agents.ingestion.metadata_loader import ContractMetadata
 from ontology_manager import get_ontology_manager
 
 
@@ -291,37 +293,121 @@ Return only the JSON object with extracted values. Extract EVERYTHING you can fi
         document_id: str,
         contract_info: dict,
     ) -> URIRef:
-        """Add contract entity to graph."""
-        contract_id = contract_info.get("id", document_id.replace("doc_", "Contract_"))
-        contract_uri = CONTRACT[contract_id]
+        """
+        Add contract entity to graph with full metadata.
         
-        # Type
-        g.add((contract_uri, RDF.type, PROC.Contract))
-        
-        # Label
-        title = contract_info.get("title", f"Contract {contract_id}")
-        g.add((contract_uri, RDFS.label, Literal(title)))
-        
-        # Value
-        if "value" in contract_info:
-            value = self._safe_parse_number(contract_info["value"])
-            if value is not None:
-                g.add((contract_uri, PROC.contractValue, Literal(value, datatype=XSD.decimal)))
-        
-        # Dates
-        if "effective_date" in contract_info:
-            g.add((contract_uri, PROC.effectiveDate, Literal(contract_info["effective_date"], datatype=XSD.date)))
-        if "expiration_date" in contract_info:
-            g.add((contract_uri, PROC.expirationDate, Literal(contract_info["expiration_date"], datatype=XSD.date)))
-        
-        # Status
-        status = contract_info.get("status", "Active")
-        g.add((contract_uri, PROC.status, Literal(status)))
-        
-        # Jurisdiction
-        if "jurisdiction" in contract_info:
-            jurisdiction_uri = PROC[contract_info["jurisdiction"]]
-            g.add((contract_uri, PROC.governedBy, jurisdiction_uri))
+        Now supports ContractMetadata from cacheview.json for complete metadata.
+        """
+        # Check if we have ContractMetadata object
+        metadata = contract_info.get("metadata")
+        if isinstance(metadata, ContractMetadata):
+            # Use business Contract_ID as primary identifier
+            contract_id = metadata.contract_id or metadata.doc_id or document_id
+            contract_uri = CONTRACT[contract_id]
+            
+            # Type
+            g.add((contract_uri, RDF.type, PROC.Contract))
+            
+            # Core identifiers
+            if metadata.contract_id:
+                g.add((contract_uri, PROC.contractId, Literal(metadata.contract_id)))
+            if metadata.doc_id:
+                g.add((contract_uri, PROC.documentId, Literal(metadata.doc_id)))
+            if metadata.project_name:
+                g.add((contract_uri, PROC.projectName, Literal(metadata.project_name)))
+            if metadata.parent_contract:
+                # Link to parent contract
+                parent_uri = CONTRACT[metadata.parent_contract]
+                g.add((contract_uri, PROC.parentContract, parent_uri))
+                g.add((contract_uri, PROC.parentContractId, Literal(metadata.parent_contract)))
+            
+            # Document info
+            doc_name = metadata.doc_name or contract_info.get("title", f"Contract {contract_id}")
+            g.add((contract_uri, RDFS.label, Literal(doc_name)))
+            if metadata.doc_path:
+                g.add((contract_uri, PROC.documentPath, Literal(metadata.doc_path)))
+            if metadata.doc_type:
+                g.add((contract_uri, PROC.documentType, Literal(metadata.doc_type)))
+            if metadata.status:
+                g.add((contract_uri, PROC.status, Literal(metadata.status)))
+            
+            # Supplier info
+            if metadata.supplier_name:
+                g.add((contract_uri, PROC.supplierName, Literal(metadata.supplier_name)))
+            if metadata.supplier_id:
+                g.add((contract_uri, PROC.supplierId, Literal(metadata.supplier_id)))
+            
+            # Owner info
+            if metadata.owner_name:
+                g.add((contract_uri, PROC.ownerName, Literal(metadata.owner_name)))
+            if metadata.owner_id:
+                g.add((contract_uri, PROC.ownerId, Literal(metadata.owner_id)))
+            
+            # Dates
+            if metadata.effective_date and metadata.effective_date != "Unclassified":
+                g.add((contract_uri, PROC.effectiveDate, Literal(metadata.effective_date)))
+            if metadata.expiration_date and metadata.expiration_date != "Unclassified":
+                g.add((contract_uri, PROC.expirationDate, Literal(metadata.expiration_date)))
+            
+            # Contract details
+            if metadata.agreement_type:
+                g.add((contract_uri, PROC.agreementType, Literal(metadata.agreement_type)))
+            if metadata.business_unit and metadata.business_unit != "Unclassified/Unclassified":
+                g.add((contract_uri, PROC.businessUnit, Literal(metadata.business_unit)))
+            if metadata.signatories:
+                g.add((contract_uri, PROC.signatories, Literal(metadata.signatories)))
+            
+            # Extra fields from cacheview.json
+            for key, value in metadata.extra_fields.items():
+                if value and str(value).strip():
+                    # Create property URI from field name
+                    prop_name = key.replace(" ", "_").replace("-", "_")
+                    prop_uri = PROC[prop_name]
+                    g.add((contract_uri, prop_uri, Literal(str(value))))
+            
+        else:
+            # Fallback: Legacy contract_info dict (backward compatibility)
+            contract_id = contract_info.get("Contract_ID") or contract_info.get("id", document_id.replace("doc_", "Contract_"))
+            contract_uri = CONTRACT[contract_id]
+            
+            # Type
+            g.add((contract_uri, RDF.type, PROC.Contract))
+            
+            # Label
+            title = contract_info.get("Doc_Name") or contract_info.get("title", f"Contract {contract_id}")
+            g.add((contract_uri, RDFS.label, Literal(title)))
+            
+            # Add all fields from contract_info dict
+            field_mappings = {
+                "Contract_ID": PROC.contractId,
+                "Project_Name": PROC.projectName,
+                "Parent_Contract": PROC.parentContractId,
+                "Supplier_Name": PROC.supplierName,
+                "Supplier_ID": PROC.supplierId,
+                "Owner_Name": PROC.ownerName,
+                "Owner_ID": PROC.ownerId,
+                "Effective_Date": PROC.effectiveDate,
+                "Expiration_Date": PROC.expirationDate,
+                "Agreement_Type": PROC.agreementType,
+                "Business_Unit": PROC.businessUnit,
+                "Status": PROC.status,
+                "Doc_Path": PROC.documentPath,
+                "Doc_Type": PROC.documentType,
+                "value": PROC.contractValue,
+                "jurisdiction": PROC.governedBy,
+            }
+            
+            for key, predicate in field_mappings.items():
+                value = contract_info.get(key)
+                if value and str(value).strip() and str(value) not in ("Unclassified", "Unclassified/Unclassified"):
+                    if key == "value":
+                        parsed_value = self._safe_parse_number(value)
+                        if parsed_value is not None:
+                            g.add((contract_uri, predicate, Literal(parsed_value, datatype=XSD.decimal)))
+                    elif key in ("Effective_Date", "Expiration_Date", "effective_date", "expiration_date"):
+                        g.add((contract_uri, predicate, Literal(str(value))))
+                    else:
+                        g.add((contract_uri, predicate, Literal(str(value))))
         
         return contract_uri
 

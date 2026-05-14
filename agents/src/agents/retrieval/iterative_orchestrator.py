@@ -84,7 +84,7 @@ class IterativeOrchestrator(BaseAgent):
         self,
         settings: Optional[Settings] = None,
         llm: Optional[BaseChatModel] = None,
-        max_iterations: int = 3
+        max_iterations: int = 1  # DEMO MODE: Changed from 3 to 1 for fast responses
     ):
         super().__init__(settings, llm)
         self.name = "IterativeOrchestrator"
@@ -93,6 +93,12 @@ class IterativeOrchestrator(BaseAgent):
         # Initialize sub-agents
         self.query_decomposer = SmartQueryDecomposer(settings, llm)
         self.answer_critic = AnswerCritiqueAgent(settings, llm)
+        
+        # DEMO MODE: Log the configuration
+        self.logger.info(
+            f"IterativeOrchestrator initialized in DEMO MODE: "
+            f"max_iterations={self.max_iterations} (no refinement)"
+        )
     
     async def process(self, input_data: Any) -> Any:
         """Required abstract method."""

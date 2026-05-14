@@ -2,6 +2,8 @@
 Clause Extraction Agent - Identifies and classifies contract clauses.
 """
 
+import json
+import re
 from typing import Any
 
 from langchain_core.output_parsers import JsonOutputParser
@@ -294,15 +296,24 @@ Extract all identifiable clauses and return as JSON."""),
         if len(text) > 30000:
             return await self._process_long_document(document_id, text)
         
-        # Create the chain
-        parser = JsonOutputParser()
-        chain = self.EXTRACTION_PROMPT | self.llm | parser
+        # Create the chain - but we'll handle JSON parsing manually
+        chain = self.EXTRACTION_PROMPT | self.llm
         
         try:
-            result = await chain.ainvoke({
+            # Get raw LLM response
+            raw_response = await chain.ainvoke({
                 "document_id": document_id,
                 "contract_text": text,
             })
+            
+            # Extract content from AIMessage if needed
+            if hasattr(raw_response, 'content'):
+                response_text = raw_response.content
+            else:
+                response_text = str(raw_response)
+            
+            # Extract JSON from markdown or raw text
+            result = self._extract_json_from_response(response_text)
             
             clauses = self._parse_clause_result(result)
             
@@ -325,6 +336,94 @@ Extract all identifiable clauses and return as JSON."""),
         except Exception as e:
             self.log_error("clause_extraction", e, document_id=document_id)
             raise
+    
+    def _extract_json_from_response(self, response_text: str) -> dict[str, Any]:
+        """
+        Extract JSON from LLM response, handling markdown code blocks and truncation.
+        
+        Args:
+            response_text: Raw LLM response text
+            
+        Returns:
+            Parsed JSON dict
+            
+        Raises:
+            ValueError: If no valid JSON found
+        """
+        # Log the full response for debugging
+        self.logger.debug(f"LLM response length: {len(response_text)} chars")
+        self.logger.debug(f"LLM response preview (first 1000 chars): {response_text[:1000]}")
+        
+        # Helper function to find balanced JSON
+        def find_balanced_json(text: str, start_pos: int = 0) -> str | None:
+            """Find a balanced JSON object starting from start_pos."""
+            brace_count = 0
+            in_string = False
+            escape_next = False
+            start_idx = -1
+            
+            for i in range(start_pos, len(text)):
+                char = text[i]
+                
+                if escape_next:
+                    escape_next = False
+                    continue
+                    
+                if char == '\\':
+                    escape_next = True
+                    continue
+                    
+                if char == '"' and not escape_next:
+                    in_string = not in_string
+                    continue
+                    
+                if in_string:
+                    continue
+                    
+                if char == '{':
+                    if brace_count == 0:
+                        start_idx = i
+                    brace_count += 1
+                elif char == '}':
+                    brace_count -= 1
+                    if brace_count == 0 and start_idx != -1:
+                        return text[start_idx:i+1]
+            
+            return None
+        
+        # Try to find JSON in markdown code block first
+        json_block_match = re.search(r'```json\s*', response_text, re.DOTALL)
+        if json_block_match:
+            json_str = find_balanced_json(response_text, json_block_match.end())
+            if json_str:
+                try:
+                    return json.loads(json_str)
+                except json.JSONDecodeError as e:
+                    self.logger.warning(f"JSON decode error in markdown block: {e}")
+        
+        # Try to find JSON in generic code block
+        code_block_match = re.search(r'```\s*', response_text, re.DOTALL)
+        if code_block_match:
+            json_str = find_balanced_json(response_text, code_block_match.end())
+            if json_str:
+                try:
+                    return json.loads(json_str)
+                except json.JSONDecodeError as e:
+                    self.logger.warning(f"JSON decode error in code block: {e}")
+        
+        # Try to find raw JSON (look for first opening brace)
+        json_str = find_balanced_json(response_text, 0)
+        if json_str:
+            try:
+                return json.loads(json_str)
+            except json.JSONDecodeError as e:
+                self.logger.warning(f"JSON decode error in raw text: {e}")
+        
+        # If all else fails, raise error with helpful message
+        raise ValueError(
+            f"No valid JSON found in LLM response. "
+            f"Response preview: {response_text[:500]}..."
+        )
 
     def _parse_clause_result(
         self,

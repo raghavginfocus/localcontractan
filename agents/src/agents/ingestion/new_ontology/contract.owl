@@ -1,0 +1,549 @@
+<?xml version="1.0"?>
+<!DOCTYPE rdf:RDF [
+    <!ENTITY xsd "http://www.w3.org/2001/XMLSchema#">
+]>
+<rdf:RDF xmlns="http://example.org/contract-intelligence#"
+     xml:base="http://example.org/contract-intelligence"
+     xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+     xmlns:owl="http://www.w3.org/2002/07/owl#"
+     xmlns:xml="http://www.w3.org/XML/1998/namespace"
+     xmlns:xsd="http://www.w3.org/2001/XMLSchema#"
+     xmlns:rdfs="http://www.w3.org/2000/01/rdf-schema#">
+
+    <!-- Ontology -->
+    <owl:Ontology rdf:about="http://example.org/contract-intelligence">
+        <rdfs:comment>
+            Ontology for Contract Intelligence supporting RDF triple extraction from structured JSON and unstructured contract documents (PDFs).
+            Designed to guide LLM-based semantic parsing of contracts into Contracts, ContractFiles, Clauses, and Entities.
+        </rdfs:comment>
+    </owl:Ontology>
+
+    <!-- ===================== -->
+    <!-- Core Classes -->
+    <!-- ===================== -->
+
+    <owl:Class rdf:about="#Contract">
+        <rdfs:comment>
+            Represents a legal agreement. A Contract may have a parent contract (e.g., master agreement)
+            and may have multiple child contracts (e.g., amendments, addenda).
+        </rdfs:comment>
+    </owl:Class>
+
+    <owl:Class rdf:about="#ContractFile">
+        <rdfs:comment>
+            Represents a physical or digital file of a contract (PDF, DOCX, etc).
+            A contract must have at least one ContractFile.
+            Each ContractFile belongs to exactly one Contract.
+        </rdfs:comment>
+    </owl:Class>
+
+    <owl:Class rdf:about="#Clause">
+        <rdfs:comment>
+            Represents a clause extracted from a contract document such as Arbitration,
+            Force Majeure, Acceptance Criteria, Termination, etc.
+        </rdfs:comment>
+    </owl:Class>
+
+    <owl:Class rdf:about="#Entity">
+        <rdfs:comment>
+            Represents structured entities extracted from contract text such as parties,
+            dates, renewal terms, obligations, and monetary values.
+        </rdfs:comment>
+    </owl:Class>
+
+    <!-- Optional specialization for better extraction -->
+
+    <owl:Class rdf:about="#ClauseType">
+        <rdfs:comment>
+            Controlled vocabulary for clause categories (e.g., Arbitration, Force Majeure).
+        </rdfs:comment>
+    </owl:Class>
+
+    <owl:Class rdf:about="#EntityType">
+        <rdfs:comment>
+            Controlled vocabulary for entity types (e.g., ContractingParty, RenewalDate).
+        </rdfs:comment>
+    </owl:Class>
+
+    <!-- ===================== -->
+    <!-- Object Properties -->
+    <!-- ===================== -->
+
+    <!-- Parent / Child Relationships -->
+
+    <owl:ObjectProperty rdf:about="#hasParentContract">
+        <rdfs:domain rdf:resource="#Contract"/>
+        <rdfs:range rdf:resource="#Contract"/>
+        <owl:inverseOf rdf:resource="#hasChildContract"/>
+        <rdfs:comment>
+            Links a contract to its parent contract. Example: an amendment refers to a master agreement.
+            Cardinality: A contract can have at most one parent.
+        </rdfs:comment>
+    </owl:ObjectProperty>
+
+    <owl:ObjectProperty rdf:about="#hasChildContract">
+        <rdfs:domain rdf:resource="#Contract"/>
+        <rdfs:range rdf:resource="#Contract"/>
+        <rdfs:comment>
+            Links a contract to its derived or dependent contracts such as amendments or addenda.
+            A contract can have zero or many child contracts.
+        </rdfs:comment>
+    </owl:ObjectProperty>
+
+    <!-- Contract to Files -->
+
+    <owl:ObjectProperty rdf:about="#hasContractFile">
+        <rdfs:domain rdf:resource="#Contract"/>
+        <rdfs:range rdf:resource="#ContractFile"/>
+        <owl:inverseOf rdf:resource="#belongsToContract"/>
+        <rdfs:comment>
+            Associates a contract with its physical or digital representations.
+            A contract must have at least one contract file.
+        </rdfs:comment>
+    </owl:ObjectProperty>
+
+    <owl:ObjectProperty rdf:about="#belongsToContract">
+        <rdfs:domain rdf:resource="#ContractFile"/>
+        <rdfs:range rdf:resource="#Contract"/>
+        <rdfs:comment>
+            Indicates the contract to which a contract file belongs.
+            Each contract file must belong to exactly one contract.
+        </rdfs:comment>
+    </owl:ObjectProperty>
+
+    <!-- ContractFile to Clause -->
+
+    <owl:ObjectProperty rdf:about="#hasClause">
+        <rdfs:domain rdf:resource="#ContractFile"/>
+        <rdfs:range rdf:resource="#Clause"/>
+        <rdfs:comment>
+            Links a contract file to clauses identified in the document.
+            Example: Arbitration clause, Force Majeure clause.
+            A contract file can contain zero or many clauses.
+        </rdfs:comment>
+    </owl:ObjectProperty>
+
+    <!-- ContractFile to Entity -->
+
+    <owl:ObjectProperty rdf:about="#hasEntity">
+        <rdfs:domain rdf:resource="#ContractFile"/>
+        <rdfs:range rdf:resource="#Entity"/>
+        <rdfs:comment>
+            Links a contract file to extracted entities such as parties, dates, obligations, and renewal terms.
+            A contract file can contain zero or many entities.
+        </rdfs:comment>
+    </owl:ObjectProperty>
+
+    <!-- Typing helpers -->
+
+    <owl:ObjectProperty rdf:about="#hasClauseType">
+        <rdfs:domain rdf:resource="#Clause"/>
+        <rdfs:range rdf:resource="#ClauseType"/>
+        <rdfs:comment>
+            Categorizes a clause into a predefined type such as Arbitration or Force Majeure.
+            Useful for semantic classification during extraction.
+        </rdfs:comment>
+    </owl:ObjectProperty>
+
+    <owl:ObjectProperty rdf:about="#hasEntityType">
+        <rdfs:domain rdf:resource="#Entity"/>
+        <rdfs:range rdf:resource="#EntityType"/>
+        <rdfs:comment>
+            Categorizes an entity into a predefined type such as ContractingParty, EffectiveDate, RenewalDate.
+        </rdfs:comment>
+    </owl:ObjectProperty>
+
+    <!-- ===================== -->
+    <!-- Datatype Properties -->
+    <!-- ===================== -->
+
+    <owl:DatatypeProperty rdf:about="#agreementType">
+        <rdfs:domain rdf:resource="#ContractFile"/>
+        <rdfs:range rdf:resource="&xsd;string"/>
+        <rdfs:comment>
+            Type of agreement such as Master Agreement, NDA, SLA, etc.
+        </rdfs:comment>
+    </owl:DatatypeProperty>
+
+    <owl:DatatypeProperty rdf:about="#revisionName">
+        <rdfs:domain rdf:resource="#ContractFile"/>
+        <rdfs:range rdf:resource="&xsd;string"/>
+        <rdfs:comment>
+            Version or revision identifier of the contract file.
+        </rdfs:comment>
+    </owl:DatatypeProperty>
+
+    <owl:DatatypeProperty rdf:about="#amendmentName">
+        <rdfs:domain rdf:resource="#ContractFile"/>
+        <rdfs:range rdf:resource="&xsd;string"/>
+        <rdfs:comment>
+            Name or identifier of an amendment document.
+        </rdfs:comment>
+    </owl:DatatypeProperty>
+
+    <owl:DatatypeProperty rdf:about="#businessUnit">
+        <rdfs:domain rdf:resource="#ContractFile"/>
+        <rdfs:range rdf:resource="&xsd;string"/>
+        <rdfs:comment>
+            Business unit responsible for the contract.
+        </rdfs:comment>
+    </owl:DatatypeProperty>
+
+    <owl:DatatypeProperty rdf:about="#fileName">
+        <rdfs:domain rdf:resource="#ContractFile"/>
+        <rdfs:range rdf:resource="&xsd;string"/>
+    </owl:DatatypeProperty>
+
+    <owl:DatatypeProperty rdf:about="#effectiveDate">
+        <rdfs:domain rdf:resource="#Contract"/>
+        <rdfs:range rdf:resource="&xsd;date"/>
+    </owl:DatatypeProperty>
+
+    <!-- additions made by RS -->
+    <owl:DatatypeProperty rdf:about="#projectName">
+        <rdfs:domain rdf:resource="#Contract"/>
+        <rdfs:range rdf:resource="&xsd;string"/>
+        <rdfs:comment>
+            Name of the project or project id
+        </rdfs:comment>
+    </owl:DatatypeProperty>
+    <owl:DatatypeProperty rdf:about="#contractId">
+        <rdfs:domain rdf:resource="#Contract"/>
+        <rdfs:range rdf:resource="&xsd;string"/>
+        <rdfs:comment>
+            Contract ID
+        </rdfs:comment>
+    </owl:DatatypeProperty>
+    <owl:DatatypeProperty rdf:about="#expirationDate">
+        <rdfs:domain rdf:resource="#Contract"/>
+        <rdfs:range rdf:resource="&xsd;date"/>
+        <rdfs:comment>
+            Date of expiry of contract
+        </rdfs:comment>
+    </owl:DatatypeProperty>
+    <owl:DatatypeProperty rdf:about="#parentContract">
+        <rdfs:domain rdf:resource="#Contract"/>
+        <rdfs:range rdf:resource="&xsd;string"/>
+        <rdfs:comment>
+            Parent Contract ID
+        </rdfs:comment>
+    </owl:DatatypeProperty>
+    <owl:DatatypeProperty rdf:about="#contractOwner">
+        <rdfs:domain rdf:resource="#Contract"/>
+        <rdfs:range rdf:resource="&xsd;string"/>
+        <rdfs:comment>
+            Name of the contract owner
+        </rdfs:comment>
+    </owl:DatatypeProperty>
+    <owl:DatatypeProperty rdf:about="#ownerId">
+        <rdfs:domain rdf:resource="#Contract"/>
+        <rdfs:range rdf:resource="&xsd;string"/>
+        <rdfs:comment>
+            Email id of the contract owner
+        </rdfs:comment>
+    </owl:DatatypeProperty>
+    <owl:DatatypeProperty rdf:about="#supplierName">
+        <rdfs:domain rdf:resource="#Contract"/>
+        <rdfs:range rdf:resource="&xsd;string"/>
+        <rdfs:comment>
+            Name of the supplier
+        </rdfs:comment>
+    </owl:DatatypeProperty>
+    <owl:DatatypeProperty rdf:about="#supplierId">
+        <rdfs:domain rdf:resource="#Contract"/>
+        <rdfs:range rdf:resource="&xsd;string"/>
+        <rdfs:comment>
+            Supplier ID
+        </rdfs:comment>
+    </owl:DatatypeProperty>
+    <owl:DatatypeProperty rdf:about="#documentId">
+        <rdfs:domain rdf:resource="#Contract"/>
+        <rdfs:range rdf:resource="&xsd;string"/>
+        <rdfs:comment>
+            Document ID from CloudNotes
+        </rdfs:comment>
+    </owl:DatatypeProperty>
+    <owl:DatatypeProperty rdf:about="#parentContractId">
+        <rdfs:domain rdf:resource="#Contract"/>
+        <rdfs:range rdf:resource="&xsd;string"/>
+        <rdfs:comment>
+            Parent Contract ID (string reference)
+        </rdfs:comment>
+    </owl:DatatypeProperty>
+    <owl:DatatypeProperty rdf:about="#documentPath">
+        <rdfs:domain rdf:resource="#Contract"/>
+        <rdfs:range rdf:resource="&xsd;string"/>
+        <rdfs:comment>
+            File path to the contract document
+        </rdfs:comment>
+    </owl:DatatypeProperty>
+    <owl:DatatypeProperty rdf:about="#documentType">
+        <rdfs:domain rdf:resource="#Contract"/>
+        <rdfs:range rdf:resource="&xsd;string"/>
+        <rdfs:comment>
+            Type of document (e.g., PDF, DOCX)
+        </rdfs:comment>
+    </owl:DatatypeProperty>
+    <owl:DatatypeProperty rdf:about="#status">
+        <rdfs:domain rdf:resource="#Contract"/>
+        <rdfs:range rdf:resource="&xsd;string"/>
+        <rdfs:comment>
+            Contract status (e.g., Active, Expired)
+        </rdfs:comment>
+    </owl:DatatypeProperty>
+    <owl:DatatypeProperty rdf:about="#ownerName">
+        <rdfs:domain rdf:resource="#Contract"/>
+        <rdfs:range rdf:resource="&xsd;string"/>
+        <rdfs:comment>
+            Name of the contract owner
+        </rdfs:comment>
+    </owl:DatatypeProperty>
+    <owl:DatatypeProperty rdf:about="#signatories">
+        <rdfs:domain rdf:resource="#Contract"/>
+        <rdfs:range rdf:resource="&xsd;string"/>
+        <rdfs:comment>
+            Signatories of the contract
+        </rdfs:comment>
+    </owl:DatatypeProperty>
+    <owl:DatatypeProperty rdf:about="#contractValue">
+        <rdfs:domain rdf:resource="#Contract"/>
+        <rdfs:range rdf:resource="&xsd;decimal"/>
+        <rdfs:comment>
+            Monetary value of the contract
+        </rdfs:comment>
+    </owl:DatatypeProperty>
+    <!-- additions made by RS -->
+
+    <owl:DatatypeProperty rdf:about="#clauseText">
+        <rdfs:domain rdf:resource="#Clause"/>
+        <rdfs:range rdf:resource="&xsd;string"/>
+        <rdfs:comment>
+            Raw text of the clause extracted from the contract document.
+        </rdfs:comment>
+    </owl:DatatypeProperty>
+
+    <owl:DatatypeProperty rdf:about="#entityValue">
+        <rdfs:domain rdf:resource="#Entity"/>
+        <rdfs:range rdf:resource="&xsd;string"/>
+        <rdfs:comment>
+            Extracted value of the entity such as party name, date, or amount.
+        </rdfs:comment>
+    </owl:DatatypeProperty>
+
+    <!-- ===================== -->
+    <!-- Cardinality Constraints -->
+    <!-- ===================== -->
+
+    <owl:Class rdf:about="#Contract">
+        <!-- 0..1 parent -->
+        <rdfs:subClassOf>
+            <owl:Restriction>
+                <owl:onProperty rdf:resource="#hasParentContract"/>
+                <owl:maxCardinality rdf:datatype="&xsd;nonNegativeInteger">1</owl:maxCardinality>
+            </owl:Restriction>
+        </rdfs:subClassOf>
+
+        <!-- >=1 contract file -->
+        <rdfs:subClassOf>
+            <owl:Restriction>
+                <owl:onProperty rdf:resource="#hasContractFile"/>
+                <owl:minCardinality rdf:datatype="&xsd;nonNegativeInteger">1</owl:minCardinality>
+            </owl:Restriction>
+        </rdfs:subClassOf>
+    </owl:Class>
+
+    <owl:Class rdf:about="#ContractFile">
+        <!-- exactly 1 contract -->
+        <rdfs:subClassOf>
+            <owl:Restriction>
+                <owl:onProperty rdf:resource="#belongsToContract"/>
+                <owl:cardinality rdf:datatype="&xsd;nonNegativeInteger">1</owl:cardinality>
+            </owl:Restriction>
+        </rdfs:subClassOf>
+
+        <!-- 0..* clauses -->
+        <rdfs:subClassOf>
+            <owl:Restriction>
+                <owl:onProperty rdf:resource="#hasClause"/>
+                <owl:minCardinality rdf:datatype="&xsd;nonNegativeInteger">0</owl:minCardinality>
+            </owl:Restriction>
+        </rdfs:subClassOf>
+
+        <!-- 0..* entities -->
+        <rdfs:subClassOf>
+            <owl:Restriction>
+                <owl:onProperty rdf:resource="#hasEntity"/>
+                <owl:minCardinality rdf:datatype="&xsd;nonNegativeInteger">0</owl:minCardinality>
+            </owl:Restriction>
+        </rdfs:subClassOf>
+    </owl:Class>
+	
+<!-- ===================== -->
+<!-- ClauseType Individuals -->
+<!-- ===================== -->
+
+<owl:NamedIndividual rdf:about="#ArbitrationClause">
+    <rdf:type rdf:resource="#ClauseType"/>
+    <rdfs:comment>Clause describing dispute resolution via arbitration.</rdfs:comment>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#ForceMajeureClause">
+    <rdf:type rdf:resource="#ClauseType"/>
+    <rdfs:comment>Clause covering unforeseeable events beyond control.</rdfs:comment>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#AcceptanceCriteriaClause">
+    <rdf:type rdf:resource="#ClauseType"/>
+    <rdfs:comment>Defines acceptance conditions for deliverables.</rdfs:comment>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#TerminationClause">
+    <rdf:type rdf:resource="#ClauseType"/>
+    <rdfs:comment>Defines termination rights and conditions.</rdfs:comment>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#ConfidentialityClause">
+    <rdf:type rdf:resource="#ClauseType"/>
+    <rdfs:comment>Defines confidentiality obligations.</rdfs:comment>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#SSPAClause">
+    <rdf:type rdf:resource="#ClauseType"/>
+    <rdfs:comment>The Security and Privacy Agreement (SSPA) defines the terms and conditions between the contract awarding company and Licensor regarding data, technology, security, and privacy.</rdfs:comment>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#BenchmarkTestingClause">
+    <rdf:type rdf:resource="#ClauseType"/>
+    <rdfs:comment>Defines the quality program that a supplier must maintain, how supplier should conduct pre-delivery tests, and comply with customer-specific terms and conditions.</rdfs:comment>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#AssignmentClause">
+    <rdf:type rdf:resource="#ClauseType"/>
+    <rdfs:comment>Defines conditions for assigning rights under the agreement, with certain exceptions for business sales, divestitures, and similar events.</rdfs:comment>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#AuditClause">
+    <rdf:type rdf:resource="#ClauseType"/>
+    <rdfs:comment>Defines right of the contract awarding company to perform audits including financial and IT infrastructure and device audits</rdfs:comment>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#BestpricingClause">
+    <rdf:type rdf:resource="#ClauseType"/>
+    <rdfs:comment>Defines how and when supplier can offer services or materials at terms similar to those offered to suppliers most favoured customers</rdfs:comment>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#ContractchangeClause">
+    <rdf:type rdf:resource="#ClauseType"/>
+    <rdfs:comment>Defines change control mechanism and procedure for requesting, reviewing, and approving changes to the Statement of Work and other terms of the Agreement</rdfs:comment>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#BusinessContinuityClause">
+    <rdf:type rdf:resource="#ClauseType"/>
+    <rdfs:comment>Defines business continuity plan covering disastery recovery, pandemic planning and cyber sercurity incidents</rdfs:comment>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#DataPrivacyProtectionClause">
+    <rdf:type rdf:resource="#ClauseType"/>
+    <rdfs:comment>Defines rules and guidelines for handling personal data of buyer, buyer's custoemers and their employees</rdfs:comment>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#DisputeResolutionClause">
+    <rdf:type rdf:resource="#ClauseType"/>
+    <rdfs:comment>Establishes multi-level escalation procedure from project team to executives with defined timeframes</rdfs:comment>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#EarlyTerminationClause">
+    <rdf:type rdf:resource="#ClauseType"/>
+    <rdfs:comment>Establishes obligations of supplier wrt support and transition in the event of an early termination of the contract</rdfs:comment>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#GoverningLawClause">
+    <rdf:type rdf:resource="#ClauseType"/>
+    <rdfs:comment>Defines applicable laws, legal jurisidiction and sets limitation period for legal actions</rdfs:comment>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#IndemnificationClause">
+    <rdf:type rdf:resource="#ClauseType"/>
+    <rdfs:comment>Defines how suppleir will have to indemnify in the event of any loss to the buyer/purchase including IP infringement scenarios</rdfs:comment>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#InsuranceClause">
+    <rdf:type rdf:resource="#ClauseType"/>
+    <rdfs:comment>Defines insurance coverage for the goods, service, environment, personnel and infrastrcture that are in scope of the contract, including - commercial general liability, auto liability, and cyber liability etc</rdfs:comment>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#IntellectualPropertyClause">
+    <rdf:type rdf:resource="#ClauseType"/>
+    <rdfs:comment>Defines ownership and responsibility of supplier towards Intellectual Proerty that may be used under license or IP that may be a product of the work with buyer/purchaser</rdfs:comment>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#LiabilityClause">
+    <rdf:type rdf:resource="#ClauseType"/>
+    <rdfs:comment>Defines libaility between buyer/purchaser and supplier wrt to special, incidental, exemplary, indirect, or economic consequential damages, or lost profits, business, value, revenue, goodwill, or anticipated savings</rdfs:comment>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#LocationClause">
+    <rdf:type rdf:resource="#ClauseType"/>
+    <rdfs:comment>Defines process to be followed by supplier personnel to access buyer/purchaser premises and obligation towards reporting incidents</rdfs:comment>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#PermissionOfUsingIbmNameLikenessClause">
+    <rdf:type rdf:resource="#ClauseType"/>
+    <rdfs:comment>Defines terms and conditions for teaming agreements</rdfs:comment>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#ProductWarrantyClause">
+    <rdf:type rdf:resource="#ClauseType"/>
+    <rdfs:comment>Defines warranty redemption when Services do not comply with the warranties in this Agreement</rdfs:comment>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#RecordKeepingAndAuditClause">
+    <rdf:type rdf:resource="#ClauseType"/>
+    <rdfs:comment>Defines audit rights for compliance verification with record retention requirements</rdfs:comment>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#ReportingRequirementsClause">
+    <rdf:type rdf:resource="#ClauseType"/>
+    <rdfs:comment>Clause related to Reporting Requirements</rdfs:comment>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#SraInclusionTextClause">
+    <rdf:type rdf:resource="#ClauseType"/>
+    <rdfs:comment>Defines Supplier Relationship Agreement (SRA) terms into specific statement of work documents</rdfs:comment>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#SupplierAndPersonnelClause">
+    <rdf:type rdf:resource="#ClauseType"/>
+    <rdfs:comment>Defines independent contractor relationship with supplier responsibility for personnel management</rdfs:comment>
+</owl:NamedIndividual>
+
+<!-- ===================== -->
+<!-- EntityType Individuals -->
+<!-- ===================== -->
+
+<owl:NamedIndividual rdf:about="#ContractingParty">
+    <rdf:type rdf:resource="#EntityType"/>
+    <rdfs:comment>Legal entity entering into the contract.</rdfs:comment>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#EffectiveDateEntity">
+    <rdf:type rdf:resource="#EntityType"/>
+    <rdfs:comment>Date when contract becomes effective.</rdfs:comment>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#ExpirationDateEntity">
+    <rdf:type rdf:resource="#EntityType"/>
+    <rdfs:comment>Date when contract expires.</rdfs:comment>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#RenewalDateEntity">
+    <rdf:type rdf:resource="#EntityType"/>
+    <rdfs:comment>Date or rule describing contract renewal.</rdfs:comment>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#PaymentAmountEntity">
+    <rdf:type rdf:resource="#EntityType"/>
+    <rdfs:comment>Monetary value specified in the contract.</rdfs:comment>
+</owl:NamedIndividual>	
+
+</rdf:RDF>

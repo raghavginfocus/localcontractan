@@ -110,8 +110,6 @@ services:
       - contract-kg-network
     depends_on:
       - milvus
-    profiles:
-      - with-ui
     restart: unless-stopped
 
   # Ollama - Local LLM (works on CPU, faster with GPU)
@@ -204,7 +202,7 @@ services:
     volumes:
       - ../agents/logs:/app/logs
       - ../agents/checkpoints:/app/checkpoints
-      - ../agents/data:/app/data
+      - ingestion-data:/app/data  # Persistent volume for cached_view.json
       - ../examples:/app/examples:ro
     networks:
       - contract-kg-network
@@ -318,3 +316,6 @@ volumes:
     driver: local
   phoenix-data:
     driver: local
+  ingestion-data:
+    driver: local
+    # Stores cached_view.json and other ingestion data

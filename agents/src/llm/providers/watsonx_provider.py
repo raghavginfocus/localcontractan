@@ -33,29 +33,44 @@ class WatsonXProvider(LLMProvider):
         - watsonx_project_id (WATSONX_PROJECT_ID)
         - watsonx_model_id (WATSONX_MODEL_ID)
         - watsonx_url (WATSONX_URL)
+        - watsonx_decoding_method (WATSONX_DECODING_METHOD)
+        - watsonx_max_new_tokens (WATSONX_MAX_NEW_TOKENS)
+        - watsonx_temperature (WATSONX_TEMPERATURE)
         """
-        temperature = kwargs.get("temperature", 0.1)
-        max_tokens = kwargs.get("max_tokens", 4096)
+        # Allow override from kwargs, otherwise use settings
+        # Handle both dict and direct value for temperature
+        if isinstance(kwargs.get("temperature"), dict):
+            temperature = settings.watsonx_temperature
+        else:
+            temperature = kwargs.get("temperature", settings.watsonx_temperature)
         
-        # Base parameters (without temperature to avoid duplication)
+        # Handle max_new_tokens similarly
+        if isinstance(kwargs.get("max_new_tokens"), dict):
+            max_new_tokens = settings.watsonx_max_new_tokens
+        else:
+            max_new_tokens = kwargs.get("max_new_tokens", settings.watsonx_max_new_tokens)
+        
+        # Build parameters dict for WatsonX
         params = {
-            "model_id": settings.watsonx_model_id,
-            "project_id": settings.watsonx_project_id,
-            "url": settings.watsonx_url,
-            "apikey": settings.watsonx_api_key,
-            "max_tokens": max_tokens,
+            "decoding_method": settings.watsonx_decoding_method,
+            "max_new_tokens": int(max_new_tokens),
+            "temperature": float(temperature),
         }
         
-        # Add model-specific parameters for better structured output
-        # Temperature goes here to avoid duplication error
-        params["params"] = {
-            "decoding_method": "greedy",
-            "max_new_tokens": max_tokens,
-            "temperature": temperature,
-            "repetition_penalty": 1.0,
-        }
+        # Add response format for JSON output (if supported by model)
+        # This helps ensure the model returns valid JSON
+        model_id_lower = settings.watsonx_model_id.lower()
+        if any(model in model_id_lower for model in ["llama-3", "llama-4", "gpt", "openai"]):
+            # Llama 3, Llama 4, and OpenAI-based models support response_format
+            params["response_format"] = {"type": "json_object"}
 
-        return ChatWatsonx(**params)
+        return ChatWatsonx(
+            model_id=settings.watsonx_model_id,
+            project_id=settings.watsonx_project_id,
+            url=settings.watsonx_url,
+            apikey=settings.watsonx_api_key,
+            params=params,
+        )
 
     def validate_config(self, settings: Settings) -> bool:
         """
@@ -77,8 +92,6 @@ class WatsonXProvider(LLMProvider):
             "supports_function_calling": True,  # Depends on model
             "max_tokens": 4096,  # Model-dependent
             "supported_models": [
-                "openai/gpt-oss-120b",
-                "meta-llama/llama-3-3-70b-instruct",
                 "meta-llama/llama-3-70b-instruct",
                 "meta-llama/llama-3-8b-instruct",
                 "ibm/granite-13b-instruct-v2",

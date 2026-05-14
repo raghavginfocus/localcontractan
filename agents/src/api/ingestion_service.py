@@ -1,3 +1,5 @@
+
+
 """
 Ingestion Service - Microservice for document ingestion and processing.
 
@@ -13,7 +15,10 @@ Port: 8001
 """
 
 from contextlib import asynccontextmanager
-from typing import Any, Dict
+from datetime import datetime
+import json
+from typing import Any, Dict, Optional
+import requests
 import os
 import tempfile
 
@@ -30,7 +35,34 @@ from observability.phoenix_tracer import PhoenixTracer
 from ontology_manager import initialize_ontology
 from logger import get_module_logger
 
+import ibm_boto3
+from ibm_botocore.client import Config
+
+from dotenv import load_dotenv
+
+from fastapi import Depends
+from auth import verify_api_token
+
+load_dotenv()
+
 logger = get_module_logger(__name__)
+
+
+# Cloudant config
+CLOUDANT_URL = os.getenv("CLOUDANT_URL")
+DB_NAME = os.getenv("DB_NAME")
+VIEW_PATH = os.getenv("VIEW_PATH")
+CLOUDANT_USERNAME = os.getenv("CLOUDANT_USERNAME")
+CLOUDANT_PASSWORD = os.getenv("CLOUDANT_PASSWORD")
+# Store cache file in /app/data directory where appuser has write permissions
+CACHE_FILE = os.getenv("CACHE_FILE", "/app/data/cached_view.json")
+
+# COS config — follow your existing env names
+SOURCE_COS_API_KEY = os.getenv("COS_API_KEY_ID")
+SOURCE_COS_INSTANCE_CRN = os.getenv("COS_INSTANCE_CRN")
+SOURCE_COS_AUTH_ENDPOINT = os.getenv("COS_AUTH_ENDPOINT")
+SOURCE_COS_ENDPOINT = os.getenv("COS_ENDPOINT")
+SOURCE_BUCKET = os.getenv("SOURCE_BUCKET")
 
 
 # Pydantic models
@@ -66,6 +98,469 @@ app_state = {
 # Initialize job manager
 job_manager = IngestionJobManager()
 
+# -----------------------------------------------------------------------------
+# Initialize and return the COS client used for source document retrieval.
+#
+# Returns:
+#     IBM COS client instance
+# -----------------------------------------------------------------------------
+
+def _get_source_cos_client():
+    return ibm_boto3.client(
+        "s3",
+        ibm_api_key_id=SOURCE_COS_API_KEY,
+        ibm_service_instance_id=SOURCE_COS_INSTANCE_CRN,
+        ibm_auth_endpoint=SOURCE_COS_AUTH_ENDPOINT,
+        config=Config(signature_version="oauth"),
+        endpoint_url=SOURCE_COS_ENDPOINT,
+    )
+
+def _fetch_from_cloudant() -> dict:
+    url = f"{CLOUDANT_URL}/{DB_NAME}/{VIEW_PATH}"
+    resp = requests.get(url, auth=(CLOUDANT_USERNAME, CLOUDANT_PASSWORD), timeout=30)
+    resp.raise_for_status()
+    data = resp.json()
+
+    with open(CACHE_FILE, "w", encoding="utf-8") as fh:
+        json.dump(data, fh, indent=2)
+
+    return data
+
+# -----------------------------------------------------------------------------
+# Fetch latest Cloudant view data and cache it locally.
+#
+# Args:
+#     force (bool):
+#         If True, refresh cache even if cached data already exists
+#
+# Returns:
+#     Cached Cloudant view response
+# -----------------------------------------------------------------------------
+
+
+def fetch_and_cache_view(force: bool = False) -> dict:
+    if not force and os.path.exists(CACHE_FILE):
+        with open(CACHE_FILE, "r", encoding="utf-8") as fh:
+            content = fh.read().strip()
+        if content:
+            return json.loads(content)
+
+    return _fetch_from_cloudant()
+
+# -----------------------------------------------------------------------------
+# Extract document metadata and paths from cached Cloudant view data.
+#
+# Expected output format:
+# [
+#     {
+#         "_id": "...",
+#         "Doc_Name": "...",
+#         "Doc_Path": "..."
+#     }
+# ]
+#
+# Returns:
+#     List[dict] containing document metadata
+# -----------------------------------------------------------------------------
+
+
+def _extract_doc_paths_from_cache() -> list[dict]:
+    """
+    Extract document paths from cached CloudAnt view with filtering.
+    
+    Filters applied:
+    1. File type: Only .doc, .docx, .pdf files
+    2. Doc_Type: Exclude "Assembled PDF" and "Contract Addendum"
+    
+    Returns:
+        List of document metadata dicts with _id, Doc_Name, Doc_Path, Doc_Type
+    """
+    if not os.path.exists(CACHE_FILE):
+        raise FileNotFoundError(f"Cache file not found: {CACHE_FILE}")
+
+    with open(CACHE_FILE, "r", encoding="utf-8") as fh:
+        data = json.load(fh)
+
+    # Allowed file extensions (case-insensitive)
+    ALLOWED_EXTENSIONS = {".doc", ".docx", ".pdf"}
+    
+    # Doc_Type values to exclude
+    EXCLUDED_DOC_TYPES = {"Assembled PDF", "Contract Addendum"}
+
+    docs = []
+    total_docs = 0
+    filtered_by_extension = 0
+    filtered_by_doc_type = 0
+    
+    for row in data.get("rows", []):
+        for item in row.get("value", []):
+            total_docs += 1
+            doc_path = item.get("Doc_Path")
+            
+            if not doc_path:
+                continue
+            
+            # Filter 1: Check file extension
+            file_ext = os.path.splitext(doc_path)[1].lower()
+            if file_ext not in ALLOWED_EXTENSIONS:
+                filtered_by_extension += 1
+                logger.debug(
+                    f"Skipping {doc_path}: unsupported file type {file_ext}. "
+                    f"Only {ALLOWED_EXTENSIONS} are supported."
+                )
+                continue
+            
+            # Filter 2: Check Doc_Type
+            doc_type = item.get("Doc_Type", "")
+            if doc_type in EXCLUDED_DOC_TYPES:
+                filtered_by_doc_type += 1
+                logger.debug(
+                    f"Skipping {doc_path}: excluded Doc_Type '{doc_type}'"
+                )
+                continue
+            
+            # Document passed all filters
+            docs.append({
+                "_id": item.get("_id"),
+                "Doc_Name": item.get("Doc_Name"),
+                "Doc_Path": doc_path,
+                "Doc_Type": doc_type,
+            })
+    
+    logger.info(
+        f"Document filtering complete: "
+        f"Total={total_docs}, "
+        f"Accepted={len(docs)}, "
+        f"Filtered by extension={filtered_by_extension}, "
+        f"Filtered by Doc_Type={filtered_by_doc_type}"
+    )
+    
+    return docs
+
+# -----------------------------------------------------------------------------
+# Load CloudAnt metadata for a specific document from cached view.
+#
+# This function searches the cached_view.json for a document matching the
+# given Doc_Path and returns ALL metadata fields for that document.
+#
+# This is a GENERIC solution that works with ANY metadata structure - it
+# returns the complete item dict without hardcoding specific field names.
+#
+# Args:
+#     doc_path (str):
+#         The Doc_Path to search for (e.g., "suppliers/contract.pdf")
+#
+# Returns:
+#     dict: Complete metadata for the document, or empty dict if not found
+#
+# Example return value:
+# {
+#     "_id": "abc123",
+#     "Doc_Name": "contract.pdf",
+#     "Doc_Path": "suppliers/contract.pdf",
+#     "Supplier_Name": "Acme Corp",
+#     "Contract_Type": "MSA",
+#     "Parent_Contract_ID": "parent_123",
+#     ... (any other fields present in cached_view.json)
+# }
+# -----------------------------------------------------------------------------
+
+
+def load_cloudant_metadata(doc_path: str) -> dict[str, Any]:
+    """
+    Load CloudAnt metadata for a specific document from cached view.
+    
+    Returns complete metadata dict for the document, or empty dict if not found.
+    This is a generic solution that works with ANY metadata structure.
+    """
+    if not os.path.exists(CACHE_FILE):
+        logger.warning(f"Cache file not found: {CACHE_FILE}")
+        return {}
+
+    try:
+        with open(CACHE_FILE, "r", encoding="utf-8") as fh:
+            data = json.load(fh)
+
+        # Search for the document in cached view
+        for row in data.get("rows", []):
+            for item in row.get("value", []):
+                if item.get("Doc_Path") == doc_path:
+                    # Return the complete item dict (all metadata fields)
+                    logger.info(
+                        f"Loaded CloudAnt metadata for document",
+                        doc_path=doc_path,
+                        metadata_fields=list(item.keys())
+                    )
+                    return item
+
+        logger.warning(f"No CloudAnt metadata found for doc_path: {doc_path}")
+        return {}
+
+    except Exception as e:
+        logger.error(f"Error loading CloudAnt metadata: {e}", exc_info=True)
+        return {}
+
+# -----------------------------------------------------------------------------
+# Background job that refreshes Cloudant cache data and ingests documents
+# into the ingestion pipeline asynchronously.
+#
+# Flow:
+# 1. Validate ingestion orchestrator availability
+# 2. Refresh cache view from Cloudant
+# 3. Extract document paths from cached data
+# 4. Download each file from COS
+# 5. Store temporarily on local filesystem
+# 6. Trigger orchestrator ingestion
+# 7. Track per-document results and job progress
+# 8. Update final job status (completed/failed)
+#
+# Args:
+#     job_id (str):
+#         Unique job identifier used for status/progress tracking
+#
+#     override (bool):
+#         Whether to force re-ingestion of already indexed documents
+#
+#     limit (Optional[int]):
+#         Optional limit on number of documents to ingest
+#
+# Returns:
+#     None
+#
+# Side Effects:
+#     - Updates job_manager state/progress
+#     - Downloads files from COS
+#     - Creates temporary files
+#     - Triggers ingestion pipeline
+# -----------------------------------------------------------------------------
+
+async def run_cloudant_cache_pipeline_job(
+    job_id: str,
+    override: bool = False,
+    limit: Optional[int] = None,
+):
+    orchestrator = app_state.get("ingestion_orchestrator")
+    if not orchestrator:
+        job_manager.mark_failed(job_id, "Ingestion orchestrator not initialized")
+        return
+
+    try:
+        job_manager.update_status(job_id, JobStatus.RUNNING)
+        job_manager.update_progress(job_id, 1)
+        
+        # Track timing
+        start_time = datetime.now()
+
+        logger.info("=" * 80)
+        logger.info(f"📊 CLOUDANT CACHE PIPELINE STARTED")
+        logger.info(f"   Job ID: {job_id}")
+        logger.info(f"   Override: {override}")
+        logger.info(f"   Limit: {limit if limit else 'No limit'}")
+        logger.info("=" * 80)
+
+        # Refresh cache
+        logger.info("🔄 Refreshing CloudAnt cache...")
+        data = fetch_and_cache_view(force=True)
+        job_manager.update_progress(job_id, 15)
+        logger.info("✅ CloudAnt cache refreshed successfully")
+
+        # Extract and filter documents
+        logger.info("🔍 Extracting and filtering documents...")
+        docs = _extract_doc_paths_from_cache()
+        original_count = len(docs)
+        
+        if limit:
+            docs = docs[:limit]
+            logger.info(f"📋 Limited to {limit} documents (from {original_count} total)")
+        else:
+            logger.info(f"📋 Processing all {original_count} documents")
+
+        if not docs:
+            logger.warning("⚠️  No documents found after filtering")
+            job_manager.mark_completed(job_id, {
+                "status": "success",
+                "message": "Cache refreshed but no Doc_Path entries were found",
+                "total_docs": 0,
+                "successful": 0,
+                "failed": 0,
+                "results": [],
+            })
+            return
+
+        # Initialize COS client
+        logger.info(f"☁️  Connecting to IBM COS bucket: {SOURCE_BUCKET}")
+        cos = _get_source_cos_client()
+        
+        total = len(docs)
+        results = []
+        failed = 0
+        success_count = 0
+
+        logger.info("=" * 80)
+        logger.info(f"🚀 Starting document processing: {total} documents")
+        logger.info("=" * 80)
+
+        for idx, doc in enumerate(docs, start=1):
+            doc_path = doc["Doc_Path"]
+            doc_name = doc.get("Doc_Name", os.path.basename(doc_path))
+            doc_id = doc.get("_id", "unknown")
+            doc_type = doc.get("Doc_Type", "Unknown")
+            
+            file_start_time = datetime.now()
+
+            logger.info(f"📄 [{idx}/{total}] Processing: {doc_name}")
+            logger.info(f"   Doc ID: {doc_id}")
+            logger.info(f"   Doc Type: {doc_type}")
+            logger.info(f"   Path: {doc_path}")
+            logger.info(f"   Progress: {idx/total*100:.1f}% complete")
+
+            try:
+                # Download from COS
+                logger.info(f"   ⬇️  Downloading from COS...")
+                cos_obj = cos.get_object(Bucket=SOURCE_BUCKET, Key=doc_path)
+                file_data = cos_obj["Body"].read()
+                file_size_mb = len(file_data) / (1024 * 1024)
+                logger.info(f"   📦 Downloaded: {file_size_mb:.2f} MB")
+
+                suffix = os.path.splitext(doc_path)[1] or ".bin"
+                with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+                    tmp.write(file_data)
+                    tmp_path = tmp.name
+
+                try:
+                    # Load CloudAnt metadata for this document
+                    logger.info(f"   📋 Loading CloudAnt metadata...")
+                    cloudant_metadata = load_cloudant_metadata(doc_path)
+                    metadata_field_count = len(cloudant_metadata)
+                    logger.info(f"   ✅ Loaded {metadata_field_count} metadata fields")
+                    
+                    # Ingest document
+                    logger.info(f"   🔄 Starting ingestion...")
+                    result = await orchestrator.ingest(
+                        file_path=tmp_path,
+                        override=override,
+                        job_id=job_id,
+                        cloudant_metadata=cloudant_metadata,
+                    )
+                    
+                    # Calculate processing time
+                    file_duration = (datetime.now() - file_start_time).total_seconds()
+                    success_count += 1
+                    
+                    results.append({
+                        "doc_id": doc_id,
+                        "Doc_Name": doc_name,
+                        "Doc_Path": doc_path,
+                        "Doc_Type": doc_type,
+                        "status": "success",
+                        "processing_time_seconds": round(file_duration, 2),
+                        "file_size_mb": round(file_size_mb, 2),
+                        "metadata_fields": metadata_field_count,
+                        "ingestion_result": (
+                            result.model_dump(mode="json")
+                            if hasattr(result, "model_dump") else result
+                        ),
+                    })
+                    
+                    # Log success
+                    logger.info(f"   ✅ SUCCESS: {doc_name}")
+                    logger.info(f"   Document ID: {result.document_id if hasattr(result, 'document_id') else 'N/A'}")
+                    logger.info(f"   Processing time: {file_duration:.2f}s")
+                    logger.info(f"   File size: {file_size_mb:.2f} MB")
+                    logger.info(f"   Metadata fields: {metadata_field_count}")
+                    logger.info(f"   Status: {success_count} succeeded, {failed} failed out of {idx} processed")
+                    
+                finally:
+                    if os.path.exists(tmp_path):
+                        os.unlink(tmp_path)
+                        logger.info(f"   🗑️  Cleaned up temporary file")
+
+            except Exception as exc:
+                file_duration = (datetime.now() - file_start_time).total_seconds()
+                failed += 1
+                
+                results.append({
+                    "doc_id": doc_id,
+                    "Doc_Name": doc_name,
+                    "Doc_Path": doc_path,
+                    "Doc_Type": doc_type,
+                    "status": "failed",
+                    "error": str(exc),
+                    "processing_time_seconds": round(file_duration, 2),
+                })
+                
+                # Log failure
+                logger.error(f"   ❌ FAILED: {doc_name}")
+                logger.error(f"   Error: {str(exc)}")
+                logger.error(f"   Processing time: {file_duration:.2f}s")
+                logger.error(f"   Status: {success_count} succeeded, {failed} failed out of {idx} processed")
+
+# Calculate ingestion progress dynamically.
+#
+# First 15% of progress is reserved for:
+# - Job initialization
+# - Cache refresh operations
+#
+# Remaining 85% is distributed across document ingestion.
+#
+# Example:
+# total = 10 docs
+# idx = 5
+#
+# progress = 15 + (5/10 * 85)
+#          = 57%
+#
+# max(total, 1) prevents division-by-zero errors.
+# min(progress, 100) ensures progress never exceeds 100%.
+
+            progress = 15 + int((idx / max(total, 1)) * 85)
+            job_manager.update_progress(job_id, min(progress, 100))
+            
+            # Log progress every 10 documents
+            if idx % 10 == 0 or idx == total:
+                logger.info("=" * 80)
+                logger.info(f"📊 PROGRESS UPDATE")
+                logger.info(f"   Processed: {idx}/{total} ({idx/total*100:.1f}%)")
+                logger.info(f"   Succeeded: {success_count}")
+                logger.info(f"   Failed: {failed}")
+                logger.info(f"   Success rate: {success_count/idx*100:.1f}%")
+                logger.info("=" * 80)
+
+        # Calculate total time
+        total_duration = (datetime.now() - start_time).total_seconds()
+        avg_time_per_doc = total_duration / total if total > 0 else 0
+        
+        logger.info("=" * 80)
+        logger.info(f"🎉 CLOUDANT CACHE PIPELINE COMPLETED")
+        logger.info(f"   Total documents: {total}")
+        logger.info(f"   Successful: {success_count}")
+        logger.info(f"   Failed: {failed}")
+        logger.info(f"   Success rate: {success_count/total*100:.1f}%")
+        logger.info(f"   Total time: {total_duration:.2f}s ({total_duration/60:.2f} minutes)")
+        logger.info(f"   Average time per document: {avg_time_per_doc:.2f}s")
+        logger.info(f"   Throughput: {total/total_duration*60:.2f} documents/minute")
+        logger.info("=" * 80)
+
+        job_manager.mark_completed(job_id, {
+            "status": "success",
+            "total_docs": total,
+            "successful": success_count,
+            "failed": failed,
+            "total_time_seconds": round(total_duration, 2),
+            "avg_time_per_doc_seconds": round(avg_time_per_doc, 2),
+            "throughput_docs_per_minute": round(total/total_duration*60, 2) if total_duration > 0 else 0,
+            "results": results,
+        })
+
+    except Exception as exc:
+        logger.error("=" * 80)
+        logger.error(f"❌ CLOUDANT CACHE PIPELINE FAILED")
+        logger.error(f"   Job ID: {job_id}")
+        logger.error(f"   Error: {str(exc)}")
+        logger.error("=" * 80)
+        logger.error(f"Exception details:", exc_info=True)
+        job_manager.mark_failed(job_id, str(exc))
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -89,6 +584,11 @@ async def lifespan(app: FastAPI):
 
     # Initialize ingestion orchestrator
     app_state["ingestion_orchestrator"] = IngestionOrchestrator()
+
+    try:
+        fetch_and_cache_view(force=False)
+    except Exception as exc:
+        logger.error("Startup Cloudant fetch failed", error=str(exc))
 
     logger.info("Ingestion Service started successfully on port 8001")
     
@@ -170,7 +670,7 @@ async def health_check():
 
 
 @app.post("/api/v1/ingest", response_model=IngestionResponse)
-async def ingest_document(request: IngestionRequest):
+async def ingest_document(request: IngestionRequest,_: bool = Depends(verify_api_token)):
     """
     Ingest a document from file path.
     
@@ -217,7 +717,7 @@ async def ingest_document(request: IngestionRequest):
 @app.post("/api/v1/ingest/upload", response_model=IngestionResponse)
 async def upload_and_ingest(
     file: UploadFile = File(...),
-    override: bool = False
+    override: bool = False,_: bool = Depends(verify_api_token)
 ):
     """
     Upload and ingest a document.
@@ -275,7 +775,7 @@ async def upload_and_ingest(
 @app.post("/api/v1/ingest/async")
 async def ingest_async(
     request: IngestionRequest,
-    background_tasks: BackgroundTasks
+    background_tasks: BackgroundTasks,_: bool = Depends(verify_api_token)
 ):
     """
     Submit an ingestion job asynchronously.
@@ -313,9 +813,26 @@ async def ingest_async(
             detail=f"Failed to create job: {str(e)}"
         )
 
+# -----------------------------------------------------------------------------
+# Retrieve current status and progress of an ingestion job.
+#
+# Used for polling-based progress tracking from UI/frontend.
+#
+# Path Params:
+#     job_id (str):
+#         Unique ingestion job identifier
+#
+# Returns:
+#     {
+#         "job_id": str,
+#         "status": "queued|running|completed|failed",
+#         "progress": int,
+#         "result": Optional[dict]
+#     }
+# -----------------------------------------------------------------------------
 
 @app.get("/api/v1/ingest/status/{job_id}")
-async def get_job_status(job_id: str):
+async def get_job_status(job_id: str,_: bool = Depends(verify_api_token)):
     """Get status of an ingestion job."""
     job = job_manager.get_job(job_id)
     
@@ -338,7 +855,7 @@ async def get_job_status(job_id: str):
 
 
 @app.get("/api/v1/ingest/jobs")
-async def list_jobs(limit: int = 100, status_filter: str | None = None):
+async def list_jobs(limit: int = 100, status_filter: str | None = None,_: bool = Depends(verify_api_token)):
     """List ingestion jobs."""
     from api.job_manager import JobStatus
     
@@ -370,7 +887,7 @@ async def list_jobs(limit: int = 100, status_filter: str | None = None):
 
 
 @app.delete("/api/v1/ingest/job/{job_id}")
-async def delete_job(job_id: str):
+async def delete_job(job_id: str,_: bool = Depends(verify_api_token)):
     """Delete an ingestion job."""
     deleted = job_manager.delete_job(job_id)
     
@@ -568,7 +1085,7 @@ async def run_ingestion_job(job_id: str, file_path: str, override: bool = False)
 
             ingestion_results = await orchestrator.ingest_batch(
                 items,
-                max_concurrent=5,
+                max_concurrent=10,
                 progress_callback=_progress_callback,
                 override=override,
                 job_id=job_id,
@@ -674,7 +1191,7 @@ async def run_ingestion_job(job_id: str, file_path: str, override: bool = False)
 
             results = await orchestrator.ingest_batch(
                 items,
-                max_concurrent=5,
+                max_concurrent=10,
                 progress_callback=_dir_progress_callback,
                 job_id=job_id,
             )
@@ -724,7 +1241,7 @@ async def run_ingestion_job(job_id: str, file_path: str, override: bool = False)
 
 
 @app.get("/api/v1/metrics")
-async def get_metrics():
+async def get_metrics(_: bool = Depends(verify_api_token)):
     """Get ingestion service metrics."""
     try:
         from service_factory import get_service_factory
@@ -744,6 +1261,268 @@ async def get_metrics():
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to get metrics: {str(e)}"
         )
+
+# -----------------------------------------------------------------------------
+# Trigger asynchronous Cloudant cache ingestion pipeline.
+#
+# This endpoint:
+# - Refreshes Cloudant cached view data
+# - Extracts document paths from cache
+# - Downloads documents from COS
+# - Starts asynchronous ingestion pipeline
+#
+# Returns immediately with a job_id for polling.
+#
+# Query Params:
+#     override (bool):
+#         Force re-ingestion of already processed documents
+#
+#     limit (Optional[int]):
+#         Restrict number of documents processed
+#
+# Returns:
+#     {
+#         "job_id": str,
+#         "status": "pending",
+#         "check_status": str
+#     }
+#
+# Use:
+#     /api/v1/ingest/status/{job_id}
+# to track progress and results.
+# -----------------------------------------------------------------------------
+
+
+@app.get("/api/v1/cloudant/cache/refresh")
+async def refresh_cloudant_cache(
+    background_tasks: BackgroundTasks,
+    override: bool = False,
+    limit: Optional[int] = None, _: bool = Depends(verify_api_token)
+):
+    job_id = job_manager.create_job({
+        "source": "cloudant_cache_pipeline",
+        "override": override,
+        "limit": limit,
+    })
+
+    background_tasks.add_task(
+        run_cloudant_cache_pipeline_job,
+        job_id=job_id,
+        override=override,
+        limit=limit,
+    )
+
+    return {
+        "job_id": job_id,
+        "status": "pending",
+        "check_status": f"/api/v1/ingest/status/{job_id}",
+    }
+
+# -----------------------------------------------------------------------------
+# Retrieve current Cloudant cache metadata and status.
+#
+# This endpoint checks whether the local cached Cloudant
+# view file exists and returns basic cache information.
+#
+# Returns:
+#     {
+#         "status": "present|missing",
+#         "cache_file": str,
+#         "size_bytes": int,
+#         "rows": int
+#     }
+#
+# Useful for:
+# - Cache validation
+# - Debugging
+# - Monitoring cache freshness
+# -----------------------------------------------------------------------------
+
+
+
+@app.get("/api/v1/cloudant/cache/status")
+async def cloudant_cache_status():
+    if not os.path.exists(CACHE_FILE):
+        return {"status": "missing", "cache_file": CACHE_FILE}
+
+    stat = os.stat(CACHE_FILE)
+    with open(CACHE_FILE, "r", encoding="utf-8") as fh:
+        data = json.load(fh)
+
+    return {
+        "status": "present",
+        "cache_file": CACHE_FILE,
+        "size_bytes": stat.st_size,
+        "rows": len(data.get("rows", [])),
+    }
+
+
+@app.get("/api/v1/ingest/cloud/bulk", response_model=Dict[str, Any])
+async def bulk_ingest_from_cloud_all(
+    override: bool = False,_: bool = Depends(verify_api_token)
+):
+    """
+    Download all documents from an IBM Cloud Object Storage bucket (including all nested folders) and ingest them.
+    
+    Args:
+        override: Override existing document
+        
+    Returns:
+        Dictionary containing bulk ingestion summary and individual file statuses
+    """
+    logger.info("Triggered bulk cloud ingestion for entire bucket")
+    
+    try:
+        # Initialize the IBM COS Client using your existing environment variables
+        source_cos = ibm_boto3.client(
+            "s3",
+            ibm_api_key_id=os.getenv("SOURCE_COS_API_KEY"),
+            ibm_service_instance_id=os.getenv("SOURCE_COS_INSTANCE_CRN"),
+            ibm_auth_endpoint=os.getenv("SOURCE_COS_AUTH_ENDPOINT"),
+            config=Config(signature_version="oauth"),
+            #config=Config(signature_version="s3v4")
+            endpoint_url=os.getenv("SOURCE_COS_ENDPOINT_TEST"),
+        )
+        
+        source_bucket = os.getenv("SOURCE_BUCKET")
+        results = []
+        
+        # 1. First, count total files for progress tracking
+        logger.info("Counting total files in bucket...")
+        total_files = 0
+        paginator = source_cos.get_paginator("list_objects_v2")
+        pages = paginator.paginate(Bucket=source_bucket)
+        
+        for page in pages:
+            if "Contents" in page:
+                # Count only actual files, not folder markers
+                total_files += sum(1 for obj in page["Contents"] if not obj["Key"].endswith("/"))
+        
+        logger.info(f"📊 BATCH INGESTION STARTED: {total_files} files to process from bucket '{source_bucket}'")
+        logger.info("=" * 80)
+        
+        # 2. Reset paginator for actual processing
+        pages = paginator.paginate(Bucket=source_bucket)
+        processed_count = 0
+        success_count = 0
+        failed_count = 0
+        start_time = datetime.now()
+        
+        # 3. Iterate through every page of results
+        for page in pages:
+            if "Contents" not in page:
+                continue
+                
+            # 4. Iterate over every file in the current page
+            for obj in page["Contents"]:
+                file_key = obj["Key"]
+                
+                # Skip folder markers (empty objects that just represent a directory)
+                if file_key.endswith("/"):
+                    continue
+                
+                processed_count += 1
+                file_start_time = datetime.now()
+                
+                logger.info(f"📄 [{processed_count}/{total_files}] Processing: {file_key}")
+                logger.info(f"   Progress: {processed_count/total_files*100:.1f}% complete")
+                
+                try:
+                    # Download the file object from COS
+                    file_obj = source_cos.get_object(Bucket=source_bucket, Key=file_key)
+                    file_data = file_obj["Body"].read()
+                    
+                    file_ext = os.path.splitext(file_key)[1]
+                    
+                    # Save securely to a temporary file in the pod
+                    with tempfile.NamedTemporaryFile(delete=False, suffix=file_ext) as tmp_file:
+                        tmp_file.write(file_data)
+                        tmp_file_path = tmp_file.name
+                        
+                    try:
+                        # Pass the local pod path to the existing ingestion orchestrator
+                        request = IngestionRequest(file_path=tmp_file_path, override=override)
+                        ingest_resp = await ingest_document(request)
+                        
+                        # Calculate processing time
+                        file_duration = (datetime.now() - file_start_time).total_seconds()
+                        
+                        # Record success
+                        success_count += 1
+                        results.append({
+                            "file": file_key,
+                            "status": "success",
+                            "document_id": ingest_resp.document_id,
+                            "processing_time_seconds": round(file_duration, 2)
+                        })
+                        
+                        logger.info(f"   ✅ SUCCESS: {file_key}")
+                        logger.info(f"   Document ID: {ingest_resp.document_id}")
+                        logger.info(f"   Processing time: {file_duration:.2f}s")
+                        logger.info(f"   Status: {success_count} succeeded, {failed_count} failed out of {processed_count} processed")
+                        
+                    finally:
+                        # Clean up the temporary file
+                        if os.path.exists(tmp_file_path):
+                            os.unlink(tmp_file_path)
+                            logger.info(f"   🗑️  Cleaned up temporary file: {tmp_file_path}")
+                            
+                except Exception as file_e:
+                    # Calculate processing time even for failures
+                    file_duration = (datetime.now() - file_start_time).total_seconds()
+                    failed_count += 1
+                    
+                    logger.error(f"   ❌ FAILED: {file_key}")
+                    logger.error(f"   Error: {str(file_e)}")
+                    logger.error(f"   Processing time: {file_duration:.2f}s")
+                    logger.error(f"   Status: {success_count} succeeded, {failed_count} failed out of {processed_count} processed")
+                    
+                    # Record failure but allow the loop to continue to the next file
+                    results.append({
+                        "file": file_key,
+                        "status": "failed",
+                        "error": str(file_e),
+                        "processing_time_seconds": round(file_duration, 2)
+                    })
+                
+                logger.info("-" * 80)
+        
+        # Calculate total batch time
+        total_duration = (datetime.now() - start_time).total_seconds()
+        avg_time_per_file = total_duration / processed_count if processed_count > 0 else 0
+        
+        # Final summary
+        logger.info("=" * 80)
+        logger.info("🎉 BATCH INGESTION COMPLETED")
+        logger.info(f"📊 SUMMARY:")
+        logger.info(f"   Total files: {total_files}")
+        logger.info(f"   Processed: {processed_count}")
+        logger.info(f"   ✅ Succeeded: {success_count} ({success_count/processed_count*100:.1f}%)")
+        logger.info(f"   ❌ Failed: {failed_count} ({failed_count/processed_count*100:.1f}%)")
+        logger.info(f"   ⏱️  Total time: {total_duration:.2f}s ({total_duration/60:.1f} minutes)")
+        logger.info(f"   ⚡ Average time per file: {avg_time_per_file:.2f}s")
+        logger.info("=" * 80)
+                    
+        return {
+            "message": "Bulk ingestion completed",
+            "total_files": total_files,
+            "total_processed": processed_count,
+            "succeeded": success_count,
+            "failed": failed_count,
+            "success_rate": f"{success_count/processed_count*100:.1f}%" if processed_count > 0 else "0%",
+            "total_time_seconds": round(total_duration, 2),
+            "average_time_per_file_seconds": round(avg_time_per_file, 2),
+            "results": results
+        }
+            
+    except Exception as e:
+        logger.error(f"Error pulling and ingesting from cloud: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error processing bulk cloud documents: {str(e)}",
+        )
+
+
 
 
 if __name__ == "__main__":

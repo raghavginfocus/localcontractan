@@ -22,7 +22,7 @@ class LLMProviderFactory:
 
     _providers: Dict[str, Type[LLMProvider]] = {
         "ollama": OllamaProvider,
-        "watsonx": WatsonXProvider,
+        "watsonx": WatsonXProvider
     }
 
     @classmethod

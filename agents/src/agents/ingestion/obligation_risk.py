@@ -2,6 +2,8 @@
 Obligation and Risk Extraction Agent.
 """
 
+import json
+import re
 from typing import Any
 
 from langchain_core.output_parsers import JsonOutputParser
@@ -137,14 +139,24 @@ Extract all obligations and risks as JSON."""),
         # Format clauses for the prompt
         clauses_text = self._format_clauses(clauses)
         
-        parser = JsonOutputParser()
-        chain = self.EXTRACTION_PROMPT | self.llm | parser
+        # Remove JsonOutputParser - we'll handle JSON extraction manually
+        chain = self.EXTRACTION_PROMPT | self.llm
         
         try:
-            result = await chain.ainvoke({
+            # Get raw LLM response
+            raw_response = await chain.ainvoke({
                 "document_id": document_id,
                 "clauses_text": clauses_text,
             })
+            
+            # Extract content from AIMessage if needed
+            if hasattr(raw_response, 'content'):
+                response_text = raw_response.content
+            else:
+                response_text = str(raw_response)
+            
+            # Extract JSON from markdown or raw text
+            result = self._extract_json_from_response(response_text)
             
             # Parse obligations with robust handling
             obligations = []
@@ -168,6 +180,8 @@ Extract all obligations and risks as JSON."""),
             for i, risk_data in enumerate(result.get("risks", [])):
                 try:
                     risk_data["risk_id"] = f"risk_{document_id}_{i + 1}"
+                    # CRITICAL FIX: Ensure risk_type is always present
+                    risk_data.setdefault("risk_type", "OperationalRisk")
                     risk_data.setdefault("description", risk_data.get("risk_type", "Risk"))
                     risk_data.setdefault("source_clause_id", f"clause_{document_id}")
                     risk_data.setdefault("severity", "Medium")
@@ -176,7 +190,7 @@ Extract all obligations and risks as JSON."""),
                         risk_data["mitigation_strategies"] = [risk_data["mitigation_strategies"]] if risk_data["mitigation_strategies"] else []
                     risks.append(Risk(**risk_data))
                 except Exception as e:
-                    self.logger.warning("Failed to parse risk", error=str(e), data=risk_data)
+                    self.logger.warning("Failed to parse risk", error=str(e), data=risk_data, agent=self.__class__.__name__)
             
             extraction_result = ObligationRiskResult(
                 document_id=document_id,
@@ -204,7 +218,50 @@ Extract all obligations and risks as JSON."""),
         except Exception as e:
             self.log_error("obligation_risk_extraction", e, document_id=document_id)
             raise
-
+    
+    def _extract_json_from_response(self, response_text: str) -> dict[str, Any]:
+        """
+        Extract JSON from LLM response, handling markdown code blocks.
+        
+        Args:
+            response_text: Raw LLM response text
+            
+        Returns:
+            Parsed JSON dict
+            
+        Raises:
+            ValueError: If no valid JSON found
+        """
+        # Try to find JSON in markdown code block first
+        json_match = re.search(r'```json\s*(\{.*?\})\s*```', response_text, re.DOTALL)
+        if json_match:
+            try:
+                return json.loads(json_match.group(1))
+            except json.JSONDecodeError:
+                pass
+        
+        # Try to find JSON in generic code block
+        json_match = re.search(r'```\s*(\{.*?\})\s*```', response_text, re.DOTALL)
+        if json_match:
+            try:
+                return json.loads(json_match.group(1))
+            except json.JSONDecodeError:
+                pass
+        
+        # Try to find raw JSON (look for outermost braces)
+        json_match = re.search(r'\{.*\}', response_text, re.DOTALL)
+        if json_match:
+            try:
+                return json.loads(json_match.group(0))
+            except json.JSONDecodeError:
+                pass
+        
+        # If all else fails, raise error with helpful message
+        raise ValueError(
+            f"No valid JSON found in LLM response. "
+            f"Response preview: {response_text[:500]}..."
+        )
+    
     def _format_clauses(self, clauses: list[ExtractedClause]) -> str:
         """Format clauses for the LLM prompt."""
         parts = []

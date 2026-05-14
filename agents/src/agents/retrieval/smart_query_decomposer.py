@@ -184,6 +184,8 @@ Example for "What is the payment term in contract ABC?":
         """
         Analyze and potentially decompose a query.
         
+        DEMO MODE: Always returns SIMPLE plan for fast responses (~40 seconds).
+        
         Args:
             question: The user's question
             
@@ -192,55 +194,77 @@ Example for "What is the payment term in contract ABC?":
         """
         self.logger.info(f"Analyzing query: {question[:100]}...")
         
-        # Create structured LLM - let LangChain auto-detect best method
-        structured_llm = self.llm.with_structured_output(DecompositionPlan)
-        
-        # Generate decomposition plan
-        chain = self.decomposition_prompt | structured_llm
-        
-        try:
-            plan = await chain.ainvoke({
-                "question": question
-            })
-            
-            # Handle None response from LLM (structured output not supported)
-            if plan is None:
-                self.logger.warning(
-                    "LLM returned None - structured output may not be supported. "
-                    "Treating query as simple (no decomposition)."
-                )
-                plan = DecompositionPlan(
-                    should_decompose=False,
-                    complexity=QueryComplexity.SIMPLE,
-                    reasoning="LLM structured output unavailable",
-                    sub_queries=[],
-                    execution_order=[]
-                )
-        except Exception as e:
-            self.logger.error(f"Decomposition failed: {e}. Treating as simple.")
-            plan = DecompositionPlan(
-                should_decompose=False,
-                complexity=QueryComplexity.SIMPLE,
-                reasoning=f"Decomposition error: {str(e)}",
-                sub_queries=[],
-                execution_order=[]
-            )
+        # ⚡ DEMO MODE: Force all queries to be SIMPLE
+        # This bypasses LLM decomposition analysis for fast responses
+        plan = DecompositionPlan(
+            should_decompose=False,
+            complexity=QueryComplexity.SIMPLE,
+            reasoning="Demo mode: treating all queries as simple for fast response (~40s)",
+            sub_queries=[],
+            execution_order=[]
+        )
         
         self.logger.info(
             f"Decomposition analysis - Complexity: {plan.complexity}, "
             f"Should decompose: {plan.should_decompose}"
         )
-        
-        if plan.should_decompose:
-            self.logger.info(f"Created {len(plan.sub_queries)} sub-queries")
-            for i, sq in enumerate(plan.sub_queries):
-                deps = (f" (depends on: {sq.depends_on})"
-                        if sq.depends_on else "")
-                self.logger.info(f"  {i}: {sq.query[:80]}...{deps}")
-        else:
-            self.logger.info(f"No decomposition needed: {plan.reasoning}")
+        self.logger.info(f"No decomposition needed: {plan.reasoning}")
         
         return plan
+        
+        # ========== ORIGINAL CODE (Commented out for demo) ==========
+        # Uncomment below to restore full decomposition functionality
+        #
+        # # Create structured LLM - let LangChain auto-detect best method
+        # structured_llm = self.llm.with_structured_output(DecompositionPlan)
+        #
+        # # Generate decomposition plan
+        # chain = self.decomposition_prompt | structured_llm
+        #
+        # try:
+        #     plan = await chain.ainvoke({
+        #         "question": question
+        #     })
+        #
+        #     # Handle None response from LLM (structured output not supported)
+        #     if plan is None:
+        #         self.logger.warning(
+        #             "LLM returned None - structured output may not be supported. "
+        #             "Treating query as simple (no decomposition)."
+        #         )
+        #         plan = DecompositionPlan(
+        #             should_decompose=False,
+        #             complexity=QueryComplexity.SIMPLE,
+        #             reasoning="LLM structured output unavailable",
+        #             sub_queries=[],
+        #             execution_order=[]
+        #         )
+        # except Exception as e:
+        #     self.logger.error(f"Decomposition failed: {e}. Treating as simple.")
+        #     plan = DecompositionPlan(
+        #         should_decompose=False,
+        #         complexity=QueryComplexity.SIMPLE,
+        #         reasoning=f"Decomposition error: {str(e)}",
+        #         sub_queries=[],
+        #         execution_order=[]
+        #     )
+        #
+        # self.logger.info(
+        #     f"Decomposition analysis - Complexity: {plan.complexity}, "
+        #     f"Should decompose: {plan.should_decompose}"
+        # )
+        #
+        # if plan.should_decompose:
+        #     self.logger.info(f"Created {len(plan.sub_queries)} sub-queries")
+        #     for i, sq in enumerate(plan.sub_queries):
+        #         deps = (f" (depends on: {sq.depends_on})"
+        #                 if sq.depends_on else "")
+        #         self.logger.info(f"  {i}: {sq.query[:80]}...{deps}")
+        # else:
+        #     self.logger.info(f"No decomposition needed: {plan.reasoning}")
+        #
+        # return plan
+        # ========== END ORIGINAL CODE ==========
     
     def get_execution_batches(
         self,

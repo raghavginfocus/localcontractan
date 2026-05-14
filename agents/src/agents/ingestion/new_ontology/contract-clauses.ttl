@@ -1,0 +1,392 @@
+@prefix proc: <http://procurement.kg/ontology#> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+@prefix sh: <http://www.w3.org/ns/shacl#> .
+
+##################################################
+# Ontology
+##################################################
+
+proc:Ontology a owl:Ontology ;
+    rdfs:comment "Contract Intelligence Ontology for RDF extraction and validation using SHACL." .
+
+##################################################
+# Classes
+##################################################
+
+proc:Contract a owl:Class ;
+    rdfs:comment "Legal agreement. May have parent and child contracts." .
+
+proc:ContractFile a owl:Class ;
+    rdfs:comment "Digital or physical file representing a contract." .
+
+proc:Clause a owl:Class ;
+    rdfs:comment "Clause extracted from a contract." .
+
+proc:Entity a owl:Class ;
+    rdfs:comment "Structured entity extracted from contract text." .
+
+proc:ClauseType a owl:Class .
+proc:EntityType a owl:Class .
+
+##################################################
+# Object Properties
+##################################################
+
+proc:hasParentContract a owl:ObjectProperty ;
+    rdfs:domain proc:Contract ;
+    rdfs:range proc:Contract ;
+    owl:inverseOf proc:hasChildContract ;
+    rdfs:comment "Links contract to its parent (max 1)." .
+
+proc:hasChildContract a owl:ObjectProperty ;
+    rdfs:domain proc:Contract ;
+    rdfs:range proc:Contract ;
+    rdfs:comment "Links contract to child contracts (0..*)." .
+
+proc:hasContractFile a owl:ObjectProperty ;
+    rdfs:domain proc:Contract ;
+    rdfs:range proc:ContractFile ;
+    owl:inverseOf proc:belongsToContract ;
+    rdfs:comment "A contract must have at least one file." .
+
+proc:belongsToContract a owl:ObjectProperty ;
+    rdfs:domain proc:ContractFile ;
+    rdfs:range proc:Contract ;
+    rdfs:comment "Each file belongs to exactly one contract." .
+
+proc:hasClause a owl:ObjectProperty ;
+    rdfs:domain proc:ContractFile ;
+    rdfs:range proc:Clause ;
+    rdfs:comment "Contract file contains clauses." .
+
+proc:hasEntity a owl:ObjectProperty ;
+    rdfs:domain proc:ContractFile ;
+    rdfs:range proc:Entity ;
+    rdfs:comment "Contract file contains extracted entities." .
+
+proc:hasClauseType a owl:ObjectProperty ;
+    rdfs:domain proc:Clause ;
+    rdfs:range proc:ClauseType .
+
+proc:hasEntityType a owl:ObjectProperty ;
+    rdfs:domain proc:Entity ;
+    rdfs:range proc:EntityType .
+
+##################################################
+# Datatype Properties
+##################################################
+
+proc:agreementType a owl:DatatypeProperty ;
+    rdfs:domain proc:ContractFile ;
+    rdfs:range xsd:string .
+
+proc:revisionName a owl:DatatypeProperty ;
+    rdfs:domain proc:ContractFile ;
+    rdfs:range xsd:string .
+
+proc:amendmentName a owl:DatatypeProperty ;
+    rdfs:domain proc:ContractFile ;
+    rdfs:range xsd:string .
+
+proc:businessUnit a owl:DatatypeProperty ;
+    rdfs:domain proc:ContractFile ;
+    rdfs:range xsd:string .
+
+proc:fileName a owl:DatatypeProperty ;
+    rdfs:domain proc:ContractFile ;
+    rdfs:range xsd:string .
+
+proc:effectiveDate a owl:DatatypeProperty ;
+    rdfs:domain proc:Contract ;
+    rdfs:range xsd:date .
+
+proc:projectName a owl:DatatypeProperty ;
+    rdfs:domain proc:Contract ;
+    rdfs:range xsd:string .
+
+proc:contractId a owl:DatatypeProperty ;
+    rdfs:domain proc:Contract ;
+    rdfs:range xsd:string .
+
+proc:expirationDate a owl:DatatypeProperty ;
+    rdfs:domain proc:Contract ;
+    rdfs:range xsd:date .
+
+proc:parentContract a owl:DatatypeProperty ;
+    rdfs:domain proc:Contract ;
+    rdfs:range xsd:string .    
+
+proc:contractOwner a owl:DatatypeProperty ;
+    rdfs:domain proc:Contract ;
+    rdfs:range xsd:string .
+
+proc:ownerId a owl:DatatypeProperty ;
+    rdfs:domain proc:Contract ;
+    rdfs:range xsd:string .
+
+proc:supplierName a owl:DatatypeProperty ;
+    rdfs:domain proc:Contract ;
+    rdfs:range xsd:string .
+
+proc:supplierId a owl:DatatypeProperty ;
+    rdfs:domain proc:Contract ;
+    rdfs:range xsd:string .
+
+proc:documentId a owl:DatatypeProperty ;
+    rdfs:domain proc:Contract ;
+    rdfs:range xsd:string .
+
+proc:parentContractId a owl:DatatypeProperty ;
+    rdfs:domain proc:Contract ;
+    rdfs:range xsd:string .
+
+proc:documentPath a owl:DatatypeProperty ;
+    rdfs:domain proc:Contract ;
+    rdfs:range xsd:string .
+
+proc:documentType a owl:DatatypeProperty ;
+    rdfs:domain proc:Contract ;
+    rdfs:range xsd:string .
+
+proc:status a owl:DatatypeProperty ;
+    rdfs:domain proc:Contract ;
+    rdfs:range xsd:string .
+
+proc:ownerName a owl:DatatypeProperty ;
+    rdfs:domain proc:Contract ;
+    rdfs:range xsd:string .
+
+proc:signatories a owl:DatatypeProperty ;
+    rdfs:domain proc:Contract ;
+    rdfs:range xsd:string .
+
+proc:contractValue a owl:DatatypeProperty ;
+    rdfs:domain proc:Contract ;
+    rdfs:range xsd:decimal .
+
+proc:agreementType a owl:DatatypeProperty ;
+    rdfs:domain proc:Contract ;
+    rdfs:range xsd:string .
+
+proc:businessUnit a owl:DatatypeProperty ;
+    rdfs:domain proc:Contract ;
+    rdfs:range xsd:string .
+
+proc:clauseText a owl:DatatypeProperty ;
+    rdfs:domain proc:Clause ;
+    rdfs:range xsd:string .
+
+proc:entityValue a owl:DatatypeProperty ;
+    rdfs:domain proc:Entity ;
+    rdfs:range xsd:string .
+
+##################################################
+# Cardinality Restrictions (OWL)
+##################################################
+
+proc:Contract rdfs:subClassOf
+    [ a owl:Restriction ;
+      owl:onProperty proc:hasParentContract ;
+      owl:maxCardinality "1"^^xsd:nonNegativeInteger ],
+    [ a owl:Restriction ;
+      owl:onProperty proc:hasContractFile ;
+      owl:minCardinality "1"^^xsd:nonNegativeInteger ] .
+
+proc:ContractFile rdfs:subClassOf
+    [ a owl:Restriction ;
+      owl:onProperty proc:belongsToContract ;
+      owl:cardinality "1"^^xsd:nonNegativeInteger ] .
+
+##################################################
+# Named Individuals - Clause Types
+##################################################
+
+proc:ArbitrationClause a proc:ClauseType ;
+    rdfs:comment "Dispute resolution via arbitration." .
+
+proc:ForceMajeureClause a proc:ClauseType ;
+    rdfs:comment "Uncontrollable external events." .
+
+proc:AcceptanceCriteriaClause a proc:ClauseType ;
+    rdfs:comment "Acceptance conditions for deliverables." .
+
+proc:TerminationClause a proc:ClauseType ;
+    rdfs:comment "Termination conditions." .
+
+proc:ConfidentialityClause a proc:ClauseType ;
+    rdfs:comment "Confidentiality obligations." .
+
+proc:SSPAClause a proc:ClauseType ;
+    rdfs:comment "Data, Technology, privacy related conditions" .
+
+proc:BenchmarkTestingClause a proc:ClauseType ;
+    rdfs:comment "Quality program requirements" .
+
+proc:AssignmentClause a proc:ClauseType ;
+    rdfs:comment "Conditions for assigning rights under the agreement " .
+
+proc:AuditClause a proc:ClauseType ;
+    rdfs:comment "Rights to perform audits" .
+
+proc:BestpricingClause a proc:ClauseType ;
+    rdfs:comment "Offer goods and servies at best rates comparable to that offered to preferred customers" .
+
+proc:DataPrivacyProtectionClause a proc:ClauseType ;
+    rdfs:comment "Data privacy and protection related obligations" .
+
+proc:BusinessContinuityClause a proc:ClauseType ;
+    rdfs:comment "Business continuity plans" .
+
+proc:DisputeResolutionClause a proc:ClauseType ;
+    rdfs:comment "Defines process for escalation and resolution of issues" .
+
+proc:EarlyTerminationClause a proc:ClauseType ;
+    rdfs:comment "Support and transition obligations in the event of a termination of contract" .
+
+proc:GoverningLawClause a proc:ClauseType ;
+    rdfs:comment "Laws governing contract" .
+
+proc:IndemnificationClause a proc:ClauseType ;
+    rdfs:comment "Indmenification responsibilties of supplier" .
+
+proc:InsuranceClause a proc:ClauseType ;
+    rdfs:comment "Insurance coverage." .
+
+proc:IntellectualPropertyClause a proc:ClauseType ;
+    rdfs:comment "Intellecutal Proerty rights related conditions." .
+
+proc:LiabilityClause a proc:ClauseType ;
+    rdfs:comment "Liability between buyer/purchase and supplier" .
+
+proc:LocationClause a proc:ClauseType ;
+    rdfs:comment "Confidentiality obligations." .
+
+proc:PermissionOfUsingIbmNameLikenessClause a proc:ClauseType ;
+    rdfs:comment "Defines how teaming agreements are to be managed" .
+
+proc:ProductWarrantyClause a proc:ClauseType ;
+    rdfs:comment "Warranty obligations" .
+
+proc:RecordKeepingAndAuditClause a proc:ClauseType ;
+    rdfs:comment "Audit rigths and record rentention conditions" .
+
+proc:ReportingRequirementsClause a proc:ClauseType ;
+    rdfs:comment "Reporting requirements" .
+
+proc:SraInclusionTextClause a proc:ClauseType ;
+    rdfs:comment "Supplier Relationship Agreement(SRA) terms" .
+
+proc:SupplierAndPersonnelClause a proc:ClauseType ;
+    rdfs:comment "Supplier responsibility for personnel management" .
+
+proc:ContractchangeClause a proc:ClauseType ;
+    rdfs:comment "Process for managing changes to statement of work" .  
+
+##################################################
+# Named Individuals - Entity Types
+##################################################
+
+proc:ContractingParty a proc:EntityType .
+proc:EffectiveDateEntity a proc:EntityType .
+proc:ExpirationDateEntity a proc:EntityType .
+proc:RenewalDateEntity a proc:EntityType .
+proc:PaymentAmountEntity a proc:EntityType .
+
+##################################################
+# SHACL Shapes
+##################################################
+
+proc:ContractShape a sh:NodeShape ;
+    sh:targetClass proc:Contract ;
+    sh:property [
+        sh:path proc:hasParentContract ;
+        sh:maxCount 1 ;
+    ] ;
+    sh:property [
+        sh:path proc:hasContractFile ;
+        sh:minCount 1 ;
+    ] .
+
+proc:ContractFileShape a sh:NodeShape ;
+    sh:targetClass proc:ContractFile ;
+
+    sh:property [
+        sh:path proc:belongsToContract ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+    ] ;
+
+    sh:property [
+        sh:path proc:hasClause ;
+        sh:class proc:Clause ;
+    ] ;
+
+    sh:property [
+        sh:path proc:hasEntity ;
+        sh:class proc:Entity ;
+    ] .
+
+proc:ClauseShape a sh:NodeShape ;
+    sh:targetClass proc:Clause ;
+
+    sh:property [
+        sh:path proc:clauseText ;
+        sh:minCount 0 ;
+    ] ;
+
+    sh:property [
+        sh:path proc:hasClauseType ;
+        sh:minCount 0 ;
+        sh:in (
+            proc:ArbitrationClause
+            proc:ForceMajeureClause
+            proc:AcceptanceCriteriaClause
+            proc:TerminationClause
+            proc:ConfidentialityClause
+            proc:SSPAClause
+            proc:BenchmarkTestingClause
+            proc:AssignmentClause
+            proc:AuditClause
+            proc:BestpricingClause
+            proc:ContractchangeClause
+            proc:BusinessContinuityClause
+            proc:DataPrivacyProtectionClause
+            proc:DisputeResolutionClause
+            proc:EarlyTerminationClause
+            proc:GoverningLawClause
+            proc:IndemnificationClause
+            proc:InsuranceClause
+            proc:IntellectualPropertyClause
+            proc:LiabilityClause
+            proc:LocationClause
+            proc:PermissionOfUsingIbmNameLikenessClause
+            proc:ProductWarrantyClause
+            proc:RecordKeepingAndAuditClause
+            proc:ReportingRequirementsClause
+            proc:SraInclusionTextClause
+            proc:SupplierAndPersonnelClause
+        ) ;
+    ] .
+
+proc:EntityShape a sh:NodeShape ;
+    sh:targetClass proc:Entity ;
+
+    sh:property [
+        sh:path proc:entityValue ;
+        sh:minCount 0 ;
+    ] ;
+
+    sh:property [
+        sh:path proc:hasEntityType ;
+        sh:minCount 0 ;
+        sh:in (
+            proc:ContractingParty
+            proc:EffectiveDateEntity
+            proc:ExpirationDateEntity
+            proc:RenewalDateEntity
+            proc:PaymentAmountEntity
+        ) ;
+    ] .

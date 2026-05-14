@@ -9,8 +9,21 @@ from pydantic import Field
 from pydantic_settings import BaseSettings
 
 
+from typing import Optional
+from pydantic_settings import BaseSettings
+
+
+    
+
 class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
+
+    api_token: Optional[str] =Field(
+        default="123456",
+        description="API TOKEN",
+    )
+    api_token_header: str = "X-API-Token"
+    api_auth_enabled: bool = True
 
     # Fuseki SPARQL Endpoint
     fuseki_url: str = Field(
@@ -66,6 +79,18 @@ class Settings(BaseSettings):
     watsonx_url: str = Field(
         default="",
         description="Watsonx service URL, e.g. https://us-south.ml.cloud.ibm.com",
+    )
+    watsonx_decoding_method: str = Field(
+        default="greedy",
+        description="Watsonx decoding method (WATSONX_DECODING_METHOD)",
+    )
+    watsonx_max_new_tokens: int = Field(
+        default=2000,
+        description="Watsonx max new tokens (WATSONX_MAX_NEW_TOKENS)",
+    )
+    watsonx_temperature: float = Field(
+        default=0.1,
+        description="Watsonx temperature (WATSONX_TEMPERATURE)",
     )
     
     # Local LLM (Ollama)
@@ -158,10 +183,24 @@ class Settings(BaseSettings):
         description="Embedding dimension (must match the model)",
     )
 
-    # Ontology
+    # Ontology Configuration
+    # Primary path (ConfigMap mount in Kubernetes)
     ontology_path: str = Field(
-        default="src/schemas/ontology/procurement.owl",
-        description="Path to the OWL ontology file",
+        default="/app/ontology/contract.owl",
+        description="Path to the OWL ontology file (ConfigMap mount: /app/ontology/contract.owl)",
+    )
+    ontology_ttl_path: str = Field(
+        default="/app/ontology/contract-clauses.ttl",
+        description="Path to the TTL ontology file (ConfigMap mount: /app/ontology/contract-clauses.ttl)",
+    )
+    # Fallback path for local development (bundled in Docker image)
+    ontology_fallback_path: str = Field(
+        default="src/agents/ingestion/new_ontology/contract.owl",
+        description="Fallback path to bundled OWL file (for local development)",
+    )
+    ontology_ttl_fallback_path: str = Field(
+        default="src/agents/ingestion/new_ontology/contract-clauses.ttl",
+        description="Fallback path to bundled TTL file (for local development)",
     )
     procurement_namespace: str = Field(
         default="http://procurement.kg/ontology#",
@@ -201,7 +240,7 @@ class Settings(BaseSettings):
         description="Fuseki dataset for Docling ingestion",
     )
     docling_milvus_collection: str = Field(
-        default="contract_clauses_docling",
+        default="contract_clauses_v2",
         description="Milvus collection for Docling ingestion",
     )
 
@@ -247,30 +286,36 @@ class Settings(BaseSettings):
         description="OTLP gRPC endpoint for Phoenix collector",
     )
     
-    # Schema Evolution
+    # CloudAnt Cache Configuration
+    cache_file: str = Field(
+        default="/app/data/cached_view.json",
+        description="Path to CloudAnt cache file (persistent storage)",
+    )
+    
+    # Schema Evolution (Disabled by default - using custom ontology files)
     ontology_evolution_mode: str = Field(
         default="conservative",
         description="Schema evolution mode: conservative, suggestive, or adaptive",
     )
     generate_owl_extensions: bool = Field(
         default=False,
-        description="Whether to generate OWL extensions for new concepts",
+        description="Whether to generate OWL extensions for new concepts (disabled - using custom ontology)",
     )
     generate_rules: bool = Field(
         default=False,
-        description="Whether to generate inference rules for patterns",
+        description="Whether to generate inference rules for patterns (disabled - using custom ontology)",
     )
     generate_shacl: bool = Field(
-        default=True,
-        description="Whether to generate SHACL validation shapes for new classes",
+        default=False,
+        description="Whether to generate SHACL validation shapes for new classes (disabled - using custom ontology)",
     )
     enable_pattern_detection: bool = Field(
         default=True,
         description="Whether to enable comprehensive pattern detection (risk, compliance, obligations)",
     )
     enable_schema_governance: bool = Field(
-        default=True,
-        description="Whether to enable schema versioning, conflict resolution, and rollback",
+        default=False,
+        description="Whether to enable schema versioning, conflict resolution, and rollback (disabled - using custom ontology)",
     )
     
     # Performance Optimizations (currently disabled by default)
@@ -350,3 +395,5 @@ class Settings(BaseSettings):
 def get_settings() -> Settings:
     """Get cached settings instance."""
     return Settings()
+
+

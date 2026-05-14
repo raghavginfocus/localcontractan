@@ -1,5 +1,5 @@
-# Multi-stage Dockerfile for Contract Knowledge Graph Agents
-# Optimized for production deployment with minimal image size
+# # Multi-stage Dockerfile for Contract Knowledge Graph Agents
+# # Optimized for production deployment with minimal image size
 
 # Stage 1: Builder - Install dependencies
 FROM python:3.11-slim as builder
@@ -67,3 +67,79 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
 
 # Default command (can be overridden)
 CMD ["python", "-m", "uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000"]
+
+
+
+
+# #for ocp docker image
+# #Single-stage Dockerfile for Contract Knowledge Graph Agents
+# #Simplified for reliable cross-platform builds
+
+# FROM python:3.11-slim
+
+# # Install system dependencies
+# RUN apt-get update && apt-get install -y --no-install-recommends \
+#     build-essential \
+#     curl \
+#     git \
+#     tesseract-ocr \
+#     poppler-utils \
+#     libgl1 \
+#     libglib2.0-0 \
+#     && rm -rf /var/lib/apt/lists/*
+
+# # Create non-root user
+# RUN useradd -m -u 1000 -s /bin/bash appuser
+
+# # Set working directory
+# WORKDIR /app
+
+# # Copy and install dependencies
+# COPY requirements.txt ./
+# RUN pip install --no-cache-dir -r requirements.txt && \
+#     rm -rf /root/.cache/pip
+
+# # Copy application code first
+# COPY --chown=appuser:appuser src/ ./src/
+# COPY --chown=appuser:appuser pyproject.toml README.md ./
+
+# # Copy new custom ontology files
+# COPY src/agents/ingestion/new_ontology/contract.owl /app/src/agents/ingestion/new_ontology/
+# COPY src/agents/ingestion/new_ontology/contract-clauses.ttl /app/src/agents/ingestion/new_ontology/
+
+# # Create directories for logs, checkpoints, data, and cache
+# # Set ownership to appuser BEFORE downloading model
+# RUN mkdir -p /app/logs/retrieval /app/logs/ingestion /app/checkpoints /app/data /app/.cache/huggingface && \
+#     chown -R appuser:appuser /app
+
+# # Pre-download embedding model to avoid runtime download issues
+# # Use hf CLI instead of Python to avoid QEMU segfault during cross-platform build
+# # Download as root but to /app/.cache which is now owned by appuser
+# RUN hf download intfloat/e5-large-v2 --cache-dir /app/.cache/huggingface && \
+#     chown -R appuser:appuser /app/.cache && \
+#     echo "✅ Model intfloat/e5-large-v2 downloaded successfully to cache"
+
+# # Set environment variables
+# # Point HuggingFace cache to /app/.cache where appuser has permissions
+# ENV PYTHONPATH=/app/src \
+#     PYTHONUNBUFFERED=1 \
+#     PYTHONDONTWRITEBYTECODE=1 \
+#     HF_HOME=/app/.cache/huggingface \
+#     TRANSFORMERS_CACHE=/app/.cache/huggingface \
+#     SENTENCE_TRANSFORMERS_HOME=/app/.cache/huggingface
+
+# # Switch to non-root user
+# USER appuser
+
+# # Health check
+# HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+#     CMD python -c "import sys; sys.exit(0)"
+
+# # Default command (can be overridden)
+# CMD ["python", "-m", "uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000"]
+
+
+
+
+
+

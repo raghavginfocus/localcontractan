@@ -53,9 +53,9 @@ class OntologyMapping(BaseModel):
 class OntologySuggestion(BaseModel):
     """Suggestion for extending the ontology."""
     
-    suggestion_type: str = Field(description="Type: NewClass, NewProperty, NewRelation")
-    name: str = Field(description="Suggested name for the concept")
-    description: str = Field(description="Description of what this would represent")
+    suggestion_type: str = Field(default="NewClass", description="Type: NewClass, NewProperty, NewRelation")
+    name: str = Field(default="UnknownConcept", description="Suggested name for the concept")
+    description: str = Field(default="No description provided", description="Description of what this would represent")
     parent_class: str | None = Field(default=None, description="Parent class for new classes")
     domain: str | None = Field(default=None, description="Domain for new properties")
     range: str | None = Field(default=None, description="Range for new properties")
@@ -232,6 +232,12 @@ Return the alignment as JSON."""),
             llm_mappings = []
             for m in result.get("mappings", []):
                 try:
+                    # CRITICAL FIX: Ensure required fields are present
+                    m.setdefault("source_type", "Entity")
+                    m.setdefault("target_class", "http://procurement.kg/ontology#Entity")
+                    m.setdefault("target_properties", {})
+                    m.setdefault("confidence", 0.8)
+                    
                     mapping = OntologyMapping.from_dict(m)
                     llm_mappings.append(mapping)
                 except Exception as e:
@@ -239,6 +245,7 @@ Return the alignment as JSON."""),
                         "Failed to parse mapping, skipping",
                         error=str(e),
                         mapping_preview=str(m)[:200],
+                        agent=self.__class__.__name__,
                     )
                     if self.explanation_builder:
                         self.explanation_builder.add_error(

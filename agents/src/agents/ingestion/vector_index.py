@@ -1,5 +1,7 @@
 """
 Vector Index Agent - Indexes clause text in Milvus for semantic search.
+
+Now includes full contract metadata from cacheview.json.
 """
 
 from typing import Any
@@ -10,6 +12,7 @@ import json
 
 from agents.shared.base import BaseAgent
 from agents.ingestion.clause_extraction import ExtractedClause
+from agents.ingestion.metadata_loader import ContractMetadata
 from storage.vector.base import VectorStore
 from service_factory import get_service_factory
 from config import get_settings
@@ -67,7 +70,7 @@ class VectorIndexAgent(BaseAgent):
         **kwargs: Any,
     ) -> IndexResult:
         """
-        Index clauses in Milvus with RDF linking.
+        Index clauses in Milvus with RDF linking and full contract metadata.
         
         Args:
             input_data: Dict with:
@@ -75,6 +78,7 @@ class VectorIndexAgent(BaseAgent):
                 - 'contract_id': ID of the parent contract
                 - 'document_id': Document identifier for graph URI
                 - 'rdf_uris': Optional dict mapping clause_id to RDF URI
+                - 'contract_metadata': Optional ContractMetadata from cacheview.json
                 
         Returns:
             IndexResult with status
@@ -82,6 +86,7 @@ class VectorIndexAgent(BaseAgent):
         clauses = input_data.get("clauses", [])
         contract_id = input_data.get("contract_id", "unknown")
         document_id = input_data.get("document_id", contract_id)
+        contract_metadata = input_data.get("contract_metadata")
         
         # Initialize explanation builder if not already done
         if self.enable_explanations and not self.explanation_builder:
@@ -112,9 +117,49 @@ class VectorIndexAgent(BaseAgent):
             graph_manager = get_graph_manager()
             graph_uri = graph_manager.get_document_graph_uri(document_id)
             
-            # Convert to indexable format
+            # Convert to indexable format with full metadata
             indexable_clauses = []
             skipped = 0
+            
+            # Extract metadata fields if ContractMetadata is provided
+            metadata_fields = {}
+            if isinstance(contract_metadata, ContractMetadata):
+                metadata_fields = {
+                    "contract_id": contract_metadata.contract_id or contract_id,
+                    "doc_id": contract_metadata.doc_id or "",
+                    "project_name": contract_metadata.project_name or "",
+                    "parent_contract": contract_metadata.parent_contract or "",
+                    "doc_name": contract_metadata.doc_name or "",
+                    "doc_type": contract_metadata.doc_type or "",
+                    "status": contract_metadata.status or "",
+                    "supplier_name": contract_metadata.supplier_name or "",
+                    "supplier_id": contract_metadata.supplier_id or "",
+                    "owner_name": contract_metadata.owner_name or "",
+                    "owner_id": contract_metadata.owner_id or "",
+                    "effective_date": contract_metadata.effective_date or "",
+                    "expiration_date": contract_metadata.expiration_date or "",
+                    "agreement_type": contract_metadata.agreement_type or "",
+                    "business_unit": contract_metadata.business_unit or "",
+                }
+            else:
+                # Fallback: use contract_id from input
+                metadata_fields = {
+                    "contract_id": contract_id,
+                    "doc_id": "",
+                    "project_name": "",
+                    "parent_contract": "",
+                    "doc_name": "",
+                    "doc_type": "",
+                    "status": "",
+                    "supplier_name": "",
+                    "supplier_id": "",
+                    "owner_name": "",
+                    "owner_id": "",
+                    "effective_date": "",
+                    "expiration_date": "",
+                    "agreement_type": "",
+                    "business_unit": "",
+                }
             
             for clause in clauses:
                 # Handle both ExtractedClause and dict
@@ -165,9 +210,9 @@ class VectorIndexAgent(BaseAgent):
                     else input_data.get("source_pipeline", "legacy")
                 )
 
-                indexable_clauses.append({
+                # Build indexable clause with full metadata
+                indexable_clause = {
                     "clause_id": clause_id,
-                    "contract_id": contract_id,
                     "clause_type": clause_type,
                     "text": text,
                     "summary": summary,
@@ -179,7 +224,12 @@ class VectorIndexAgent(BaseAgent):
                     "has_table": has_table_val,
                     "page_range": page_range,
                     "source_pipeline": source_pipeline,
-                })
+                }
+                
+                # Add all contract metadata fields
+                indexable_clause.update(metadata_fields)
+                
+                indexable_clauses.append(indexable_clause)
             
             # Batch index
             if indexable_clauses:

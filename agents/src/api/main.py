@@ -23,6 +23,9 @@ from observability.phoenix_tracer import PhoenixTracer
 from ontology_manager import initialize_ontology
 from logger import get_module_logger
 
+from fastapi import Depends
+from auth import verify_api_token
+
 logger = get_module_logger(__name__)
 
 
@@ -160,7 +163,7 @@ async def health_check():
 
 
 @app.post("/api/v1/query", response_model=QueryResponse)
-async def query(request: QueryRequest):
+async def query(request: QueryRequest,_: bool = Depends(verify_api_token)):
     """
     Process a natural language query against the knowledge graph.
     
@@ -210,7 +213,7 @@ async def query(request: QueryRequest):
 
 
 @app.post("/api/v1/ingest", response_model=IngestionResponse)
-async def ingest_document(request: IngestionRequest):
+async def ingest_document(request: IngestionRequest,_: bool = Depends(verify_api_token)):
     """
     Ingest a document into the knowledge graph.
     
@@ -266,7 +269,7 @@ async def ingest_document(request: IngestionRequest):
 @app.post("/api/v1/ingest/upload", response_model=IngestionResponse)
 async def upload_and_ingest(
     file: UploadFile = File(...),
-    override: bool = False,
+    override: bool = False, _: bool = Depends(verify_api_token)
 ):
     """
     Upload and ingest a document.
@@ -309,7 +312,7 @@ async def upload_and_ingest(
 
 
 @app.get("/api/v1/metrics")
-async def get_metrics():
+async def get_metrics(_: bool = Depends(verify_api_token)):
     """Get system metrics."""
     try:
         import psutil

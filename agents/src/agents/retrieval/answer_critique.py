@@ -262,13 +262,28 @@ Provide your critique as JSON with these fields:
         Returns:
             True if refinement should continue
         """
-        # Don't refine if we've hit max iterations
-        if iteration >= max_iterations:
-            self.logger.info(
-                f"Max iterations ({max_iterations}) reached, "
-                "stopping refinement"
-            )
-            return False
+        # ============================================================
+        # DEMO MODE: OPTION 3 - Skip critique-based refinement
+        # Always return False to prevent any refinement iterations
+        # This saves 3-5 seconds per critique + prevents extra iterations
+        # ============================================================
+        self.logger.info(
+            "DEMO MODE (Option 3): Skipping critique-based refinement, "
+            f"accepting answer immediately (iteration {iteration})"
+        )
+        return False
+        
+        # ============================================================
+        # ORIGINAL CODE (commented out for demo)
+        # Uncomment this section after demo to restore full critique logic
+        # ============================================================
+        # # Don't refine if we've hit max iterations
+        # if iteration >= max_iterations:
+        #     self.logger.info(
+        #         f"Max iterations ({max_iterations}) reached, "
+        #         "stopping refinement"
+        #     )
+        #     return False
         
         # PRAGMATIC: Accept "good enough" answers
         # If relevant AND confidence >= 0.75, accept it

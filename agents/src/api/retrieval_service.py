@@ -28,6 +28,14 @@ from logger import get_module_logger
 
 logger = get_module_logger(__name__)
 
+from fastapi import Depends
+from auth import verify_api_token
+
+from typing import Optional
+from pydantic_settings import BaseSettings
+
+
+
 
 # Pydantic models
 class QueryRequest(BaseModel):
@@ -173,7 +181,7 @@ async def health_check():
 
 
 @app.post("/api/v1/query", response_model=QueryResponse)
-async def query(request: QueryRequest):
+async def query(request: QueryRequest,_: bool = Depends(verify_api_token)):
     """
     Process a natural language query.
     
@@ -217,7 +225,7 @@ async def query(request: QueryRequest):
 async def search(
     q: str,
     limit: int = 10,
-    search_type: str = "hybrid"
+    search_type: str = "hybrid",_: bool = Depends(verify_api_token)
 ):
     """
     Simple search endpoint for quick lookups.
@@ -259,7 +267,7 @@ async def search(
 
 
 @app.get("/api/v1/metrics")
-async def get_metrics():
+async def get_metrics(_: bool = Depends(verify_api_token)):
     """Get retrieval service metrics."""
     try:
         from service_factory import get_service_factory

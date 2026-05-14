@@ -213,6 +213,12 @@ CRITICAL MAPPING RULES:
    - Complete FILTER conditions
    - Return ONLY the query
 
+6. **DEMO MODE - PERFORMANCE OPTIMIZATION**:
+   - AVOID multiple text:query clauses (causes 8+ minute delays!)
+   - Use ONLY ONE text:query per query, combine search terms
+   - ALWAYS add "LIMIT 100" to prevent large result sets
+   - Example: ?clause text:query (proc:rawText "SLA performance failure") . (ONE query, not three!)
+
 EXAMPLE REASONING:
 Q: "What are the termination clauses?"
 → Entity: TerminationClause (NOT Contract!)
@@ -324,6 +330,12 @@ Provide a brief, clear explanation."""),
                 "ontology_context": self._get_ontology_context(),
                 "question": question,
             })
+            
+            # Check if LLM returned None or empty string
+            if not query or query.strip() == "":
+                logger.error("LLM returned empty/None query", question=question[:100])
+                raise ValueError(f"LLM failed to generate SPARQL query for: {question[:100]}")
+                
         except Exception as e:
             logger.error("LLM SPARQL generation failed", error=str(e))
             raise
@@ -342,6 +354,9 @@ Provide a brief, clear explanation."""),
             
             # Fix common syntax issues
             query = self._fix_common_issues(query)
+            
+            # DEMO MODE: Add LIMIT to prevent slow queries
+            query = self._add_limit_for_demo(query)
             
             # Enhance with text:query if keywords detected (post-processing)
             classification = self.query_classifier.classify(question)
@@ -464,6 +479,44 @@ Provide a brief, clear explanation."""),
         # This is tricky, so we'll just log a warning if detected
         open_brackets = query.count('<')
         close_brackets = query.count('>')
+    
+    def _add_limit_for_demo(self, query: str) -> str:
+        """
+        Add LIMIT clause to queries for demo mode performance.
+        
+        DEMO MODE: Prevents slow queries by limiting results to 100.
+        This is critical for text:query operations which can take 8+ minutes
+        without a LIMIT clause.
+        
+        Args:
+            query: SPARQL query
+            
+        Returns:
+            Query with LIMIT added if not present
+        """
+        import re
+        
+        # Check if query already has LIMIT
+        if re.search(r'\bLIMIT\s+\d+', query, re.IGNORECASE):
+            logger.debug("Query already has LIMIT clause")
+            return query
+        
+        # Only add LIMIT to SELECT queries
+        query_upper = query.upper().strip()
+        if not query_upper.startswith("SELECT"):
+            return query
+        
+        # Add LIMIT 100 at the end (before any trailing whitespace/comments)
+        query = query.rstrip()
+        
+        # Add LIMIT before closing brace if query ends with }
+        if query.endswith("}"):
+            query = query + "\nLIMIT 100"
+        else:
+            query = query + "\nLIMIT 100"
+        
+        logger.info("DEMO MODE: Added LIMIT 100 to query for performance")
+        return query
         if open_brackets != close_brackets:
             self.logger.warning(
                 "Unbalanced angle brackets detected in query",

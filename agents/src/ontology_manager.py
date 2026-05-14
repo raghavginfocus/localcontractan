@@ -239,22 +239,39 @@ class OntologyManager:
         path: str | Path,
         schema_id: str = "default",
         set_active: bool = True,
+        fallback_path: str | Path | None = None,
     ) -> OntologySchema:
         """
-        Load an ontology from an OWL file.
+        Load an ontology from an OWL file with fallback support.
         
         Args:
-            path: Path to OWL file (Turtle, RDF/XML, etc.)
+            path: Path to OWL file (Turtle, RDF/XML, etc.) - primary location (ConfigMap)
             schema_id: Identifier for this schema
             set_active: Whether to set as active schema
+            fallback_path: Fallback path if primary path doesn't exist (bundled in image)
             
         Returns:
             Loaded OntologySchema
         """
         path = Path(path)
         
+        # Try primary path first (ConfigMap mount)
         if not path.exists():
-            raise FileNotFoundError(f"Ontology file not found: {path}")
+            if fallback_path:
+                fallback = Path(fallback_path)
+                if fallback.exists():
+                    self.logger.info(
+                        "Primary ontology path not found, using fallback",
+                        primary=str(path),
+                        fallback=str(fallback)
+                    )
+                    path = fallback
+                else:
+                    raise FileNotFoundError(
+                        f"Ontology file not found at primary ({path}) or fallback ({fallback}) paths"
+                    )
+            else:
+                raise FileNotFoundError(f"Ontology file not found: {path}")
         
         self.logger.info("Loading ontology", path=str(path), schema_id=schema_id)
         
@@ -637,40 +654,83 @@ def initialize_ontology(
     """
     Initialize the global ontology manager with base ontology and extensions.
     
+    Tries ConfigMap mount first (/app/ontology/), then falls back to bundled files.
+    
     Args:
-        ontology_path: Path to base ontology file. If None, uses default.
+        ontology_path: Path to base ontology file. If None, uses default from config.
         load_extensions: Whether to load generated extensions (default: True)
         
     Returns:
         Initialized OntologyManager
     """
     manager = get_ontology_manager()
+    settings = get_settings()
     
     if ontology_path is None:
-        # Try default locations (repo root, container /app, or relative)
-        possible_paths = [
-            Path("src/schemas/ontology/procurement.owl"),  # container cwd /app
-            Path("agents/src/schemas/ontology/procurement.owl"),
-            Path("ontology/procurement.owl"),
-            Path("../ontology/procurement.owl"),
-        ]
+        # Use paths from config (ConfigMap mount with fallback)
+        ontology_path = Path(settings.ontology_path)
+        fallback_path = Path(settings.ontology_fallback_path)
         
-        for path in possible_paths:
-            if path.exists():
-                ontology_path = path
-                break
-        
-        if ontology_path is None:
-            raise FileNotFoundError("No ontology file found in default locations")
+        # Check if primary path exists, otherwise use fallback
+        if not ontology_path.exists():
+            if fallback_path.exists():
+                logger.info(
+                    "ConfigMap ontology not found, using bundled fallback",
+                    primary=str(ontology_path),
+                    fallback=str(fallback_path)
+                )
+                ontology_path = fallback_path
+            else:
+                raise FileNotFoundError(
+                    f"Ontology file not found at primary ({ontology_path}) or fallback ({fallback_path}) paths"
+                )
     
-    # Load base ontology
-    manager.load_ontology(ontology_path, schema_id="default", set_active=True)
+    # Load base ontology with fallback support
+    fallback = Path(settings.ontology_fallback_path) if ontology_path == Path(settings.ontology_path) else None
+    manager.load_ontology(ontology_path, schema_id="default", set_active=True, fallback_path=fallback)
     
     logger.info(
         "Base ontology loaded",
         path=str(ontology_path),
         classes=len(manager.get_active_schema().get_all_classes()),
     )
+    
+    # Load custom TTL file with clause definitions
+    # Try ConfigMap mount first, then fallback to bundled file
+    ttl_path = Path(settings.ontology_ttl_path)
+    ttl_fallback = Path(settings.ontology_ttl_fallback_path)
+    
+    if not ttl_path.exists():
+        if ttl_fallback.exists():
+            logger.info(
+                "ConfigMap TTL not found, using bundled fallback",
+                primary=str(ttl_path),
+                fallback=str(ttl_fallback)
+            )
+            ttl_path = ttl_fallback
+        else:
+            logger.warning(
+                "TTL ontology file not found",
+                primary=str(ttl_path),
+                fallback=str(ttl_fallback)
+            )
+            ttl_path = None
+    
+    if ttl_path and ttl_path.exists():
+        try:
+            manager.load_extension(ttl_path, merge_into="default")
+            logger.info(
+                "Custom TTL ontology loaded",
+                path=str(ttl_path),
+                total_classes=len(manager.get_active_schema().get_all_classes()),
+                total_properties=len(manager.get_active_schema().get_all_properties())
+            )
+        except Exception as e:
+            logger.warning(
+                "Failed to load custom TTL ontology",
+                path=str(ttl_path),
+                error=str(e)
+            )
     
     # Load generated extensions if enabled
     if load_extensions:
