@@ -1,0 +1,66 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api-gateway
+  namespace: contract-kg-demo
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: api-gateway
+  template:
+    metadata:
+      labels:
+        app: api-gateway
+    spec:
+      securityContext:
+        #fsGroup: 1001
+        runAsNonRoot: true   # ✅ ADD THIS
+        seccompProfile:
+          type: RuntimeDefault  
+      imagePullSecrets:
+        - name: ibm-registry-secret
+
+      containers:
+        - name: api-gateway
+          image: us.icr.io/projects-common-registry-ns/grag-contract-analysis-docling:v14
+          command: ["python","-m","uvicorn","api.gateway:app","--host","0.0.0.0","--port","8080"]
+
+          ports:
+            - containerPort: 8080
+
+          resources:
+            requests:
+              cpu: "1"
+              memory: "2Gi"
+            limits:
+              cpu: "2"
+              memory: "4Gi"
+
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+           # runAsNonRoot: true
+
+          volumeMounts:
+            - name: logs
+              mountPath: /app/logs
+          env:
+            - name: PYTHONUNBUFFERED
+              value: "1"
+            - name: PYTHONPATH
+              value: /app/src  
+
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 20
+            periodSeconds: 10
+
+      volumes:
+        - name: logs
+          emptyDir: {}      
+
+            

@@ -1,0 +1,60 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: phoenix
+  namespace: contract-kg-demo
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: phoenix
+  template:
+    metadata:
+      labels:
+        app: phoenix
+    spec:
+      containers:
+        - name: phoenix
+          image: arizephoenix/phoenix:latest
+
+          ports:
+            - containerPort: 6006
+            - containerPort: 4317
+            - containerPort: 4318
+
+          env:
+            - name: PHOENIX_WORKING_DIR
+              value: /phoenix/data
+            - name: PHOENIX_PORT
+              value: "6006"
+            - name: PHOENIX_HOST
+              value: "0.0.0.0"
+
+          volumeMounts:
+            - name: phoenix-data
+              mountPath: /phoenix/data
+
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 6006
+            initialDelaySeconds: 20
+            periodSeconds: 10
+
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 6006
+            initialDelaySeconds: 60
+            periodSeconds: 20
+
+      volumes: 
+        - name: phoenix-data
+          persistentVolumeClaim:
+            claimName: phoenix-pvc 

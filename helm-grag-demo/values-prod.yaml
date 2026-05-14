@@ -1,0 +1,16 @@
+replicaCount: 3
+
+storage:
+  fuseki: 1Gi
+  milvus: 2Gi
+  minio: 2Gi
+
+resources:
+  limits:
+    cpu: "4"
+    memory: "2Gi"
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 6

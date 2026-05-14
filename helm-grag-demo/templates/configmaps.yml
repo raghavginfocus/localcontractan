@@ -1,0 +1,220 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: fuseki-config
+  namespace: contract-kg-demo
+data:
+  JVM_ARGS: "-Xmx2g -Djetty.forwarded=true -Djetty.httpConfig.secureScheme=https -Djetty.httpConfig.securePort=443"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: fuseki-shiro
+  namespace: contract-kg-demo
+data:
+  shiro.ini: |
+    [main]
+    plainMatcher=org.apache.shiro.authc.credential.SimpleCredentialsMatcher
+    iniRealm.credentialsMatcher=$plainMatcher
+    authcBasic=org.apache.shiro.web.filter.authc.BasicHttpAuthenticationFilter
+    authcBasic.applicationName=Application
+
+    [users]
+    admin=admin123
+
+    [urls]
+    /$/ping = anon
+    /$/server = authcBasic
+    /$/datasets/** = authcBasic
+    /** = authcBasic
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: agents-env-config
+  namespace: contract-kg-demo
+data:
+  .env: |
+    FUSEKI_URL=http://fuseki:3030
+    FUSEKI_DATASET=contracts
+    # Edit .env file and add these lines:
+    FUSEKI_USER=admin
+    FUSEKI_PASSWORD=admin123
+    # =============================================================================
+    # LLM CONFIGURATION
+    # =============================================================================
+    # Choose which provider to use for all agents:
+    # - ollama  -> local models via Ollama (default)
+    # - watsonx -> IBM watsonx.ai (uses keys below)
+    LLM_PROVIDER=watsonx
+    # LLM_PROVIDER=ollama
+    # Ollama Configuration (local)
+    OLLAMA_BASE_URL=http://localhost:11434
+    # OLLAMA_MODEL=qwen2.5-coder:14b
+    OLLAMA_MODEL=qwen2.5-coder:7b
+    
+    # WatsonX Configuration (IBM watsonx.ai)
+    # To enable watsonx, set LLM_PROVIDER=watsonx and ensure ALL of these are filled:
+    WATSONX_API_KEY=DgxgEawrx39FrRJdHA2s8FlCDt3eaDoyoZwlclEg0Led
+    WATSONX_URL=https://us-south.ml.cloud.ibm.com
+
+    # Switched back to Llama (GPT-OSS-120B has structured output issues)
+    WATSONX_PROJECT_ID=822ce623-4739-4868-891c-fb84d197263a
+    WATSONX_MODEL_ID=mistralai/mistral-small-3-1-24b-instruct-2503
+    WATSONX_DECODING_METHOD=greedy
+    WATSONX_MAX_NEW_TOKENS=3500
+    WATSONX_TEMPERATURE=0.15
+    OLLAMA_FORMAT=json
+
+    # Anthropic (not used)
+    ANTHROPIC_API_KEY=
+    ANTHROPIC_MODEL=claude-3-opus-20240229
+    # =============================================================================
+    # MILVUS VECTOR DATABASE
+    # =============================================================================
+    MILVUS_HOST=milvus
+    MILVUS_PORT=19530
+    MILVUS_COLLECTION_V2=contract_clauses_v2
+    # =============================================================================
+    # EMBEDDING MODEL
+    # =============================================================================
+    # EMBEDDING_MODEL=all-MiniLM-L6-v2
+    # EMBEDDING_DIM=384
+    EMBEDDING_MODEL=intfloat/e5-large-v2
+    EMBEDDING_DIM=1024
+    # =============================================================================
+    # HUGGINGFACE CACHE CONFIGURATION
+    # =============================================================================
+    # Point HuggingFace cache to /app/.cache where appuser has permissions
+    HF_HOME=/app/.cache/huggingface
+    TRANSFORMERS_CACHE=/app/.cache/huggingface
+    SENTENCE_TRANSFORMERS_HOME=/app/.cache/huggingface
+    # =============================================================================
+    # ONTOLOGY CONFIGURATION
+    # =============================================================================
+    # Base ontology can be loaded from local path or MinIO.
+    # Recommended for production: use MinIO so ontology is persisted outside containers.
+    # Example MinIO location (bucket from OBJECT_STORAGE_BUCKET):
+    #   minio://procurement-contracts/ontology/base/procurement.owl
+    #ONTOLOGY_PATH=minio://procurement-contracts/ontology/base/procurement.owl
+
+    ONTOLOGY_PATH=/app/ontology/contract.owl
+    ONTOLOGY_TTL_PATH=/app/ontology/contract-clauses.ttl
+    PROCUREMENT_NAMESPACE=http://procurement.kg/ontology#
+    CONTRACT_NAMESPACE=http://procurement.kg/contract#
+    # =============================================================================
+    # DOCUMENT PROCESSING
+    # =============================================================================
+    UPLOAD_DIRECTORY=./data/uploads
+    MAX_FILE_SIZE_MB=50
+
+
+
+    # =============================================================================
+    # OBJECT STORAGE (MinIO / IBM COS - no AWS S3)
+    # =============================================================================
+    # MinIO (local): http://localhost:9000 or http://minio:9000 (docker)
+    # IBM COS: https://s3.<region>.cloud-object-storage.appdomain.cloud
+    OBJECT_STORAGE_ENDPOINT=http://minio:9000
+    OBJECT_STORAGE_ACCESS_KEY=minioadmin
+    OBJECT_STORAGE_SECRET_KEY=minioadmin
+    OBJECT_STORAGE_BUCKET=procurement-contracts
+    OBJECT_STORAGE_REGION=us-east-1
+    # =============================================================================
+    # LOGGING
+    # =============================================================================
+    LOG_LEVEL=INFO
+    ENABLE_AGENT_EXPLANATIONS=true
+    # =============================================================================
+    # PERFORMANCE OPTIMIZATIONS
+    # =============================================================================
+    ENABLE_QUERY_CACHE=true
+    QUERY_CACHE_SIZE=100
+    QUERY_CACHE_TTL=3600
+    ENABLE_SPARQL_TEMPLATES=true
+    ENABLE_FAST_COMPLEXITY_DETECTION=true
+    SKIP_VECTOR_WHEN_KG_SUFFICIENT=true
+    KG_SUFFICIENT_THRESHOLD=3
+    # =============================================================================
+    # SCHEMA EVOLUTION
+    # =============================================================================
+    # Mode: conservative (log only), suggestive (propose), adaptive (auto-extend)
+    ONTOLOGY_EVOLUTION_MODE=adaptive
+    GENERATE_OWL_EXTENSIONS=false
+    GENERATE_RULES=false
+    ENABLE_DUPLICATE_CHECK=true
+    DOCUMENT_REGISTRY_BACKEND=sqlite
+    DOCUMENT_REGISTRY_REDIS_URL=redis://localhost:6379/0
+    # Ingestion source: legacy (PyPDF2/python-docx) or docling (DocTags + MinIO)
+    INGESTION_SOURCE=docling
+    # Fuseki dataset for retrieval (default: contracts)
+    RETRIEVAL_FUSEKI_DATASET=contracts
+    # Milvus collection for retrieval (default: contract_clauses_v2)
+    RETRIEVAL_MILVUS_COLLECTION=contract_clauses_v2
+    # Docling pipeline targets (when INGESTION_SOURCE=docling)
+    DOCLING_FUSEKI_DATASET=contracts
+    DOCLING_MILVUS_COLLECTION=contract_clauses_v2
+    # =============================================================================
+    # OBJECT STORAGE (MinIO / IBM COS - S3-compatible, no AWS S3)
+    # =============================================================================
+    # MinIO (local): http://localhost:9000
+    # IBM COS: https://s3.<region>.cloud-object-storage.appdomain.cloud
+    OBJECT_STORAGE_ENDPOINT=http://minio:9000
+    OBJECT_STORAGE_ACCESS_KEY=minioadmin
+    OBJECT_STORAGE_SECRET_KEY=minioadmin
+    OBJECT_STORAGE_BUCKET=procurement-contracts
+    # Region for IBM COS (leave empty for MinIO)
+    OBJECT_STORAGE_REGION=
+    # =============================================================================
+    # IMPROVED AGENTIC ARCHITECTURE
+    # =============================================================================
+    # Enable new iterative refinement architecture with answer critique
+    ENABLE_ITERATIVE_REFINEMENT=true
+    MAX_REFINEMENT_ITERATIONS=3
+    # =============================================================================
+    # ARTIFACT STORE (where extraction outputs are stored)
+    # =============================================================================
+    # local: keep artifacts on container volume
+    # object_storage: upload artifacts to MinIO/COS and return minio:// URIs
+    ARTIFACT_STORE_BACKEND=object_storage
+    ARTIFACT_STORE_PREFIX=ingestion_artifacts
+    # If true, delete local artifact files after upload (keeps containers light)
+    ARTIFACT_STORE_CLEANUP_LOCAL=true
+
+
+     # Phoenix Observability
+    PHOENIX_COLLECTOR_ENDPOINT=http://phoenix:4317
+    PHOENIX_ENABLED=true
+
+
+
+
+
+    SOURCE_COS_API_KEY=GL-13v6mvFwWf5HGB_QmgPWXYQHgYmMJtlXa9weI3Bnn
+    SOURCE_COS_INSTANCE_CRN=crn:v1:bluemix:public:cloud-object-storage:global:a/8c4f0b09b93449589047800351e28635:818fe72a-a773-48b5-a3ab-612647e03eac::
+    SOURCE_COS_AUTH_ENDPOINT=https://iam.cloud.ibm.com/identity/token
+    SOURCE_COS_ENDPOINT=https://s3.us-south.cloud-object-storage.appdomain.cloud
+    SOURCE_COS_ENDPOINT_TEST=bucket-graphrag
+
+    # =============================================================================
+    # CLOUDANT
+    # =============================================================================
+    CLOUDANT_URL=https://23a5c95d-1ff0-4b28-bd26-d479fa8b4ec7-bluemix.cloudantnosqldb.appdomain.cloud
+    CLOUDANT_USERNAME=apikey-v2-7ap9ae7dbnmtvzu6hvukyaaqh423yf1xvgzdp1ozarz
+    CLOUDANT_PASSWORD=aa175ea9b8b7fdee036057614bbc7d5c
+    DB_NAME=ariba-contracts-full
+    VIEW_PATH=_design/uniqueSuppliers/_view/uniquesupplierview?group=true
+    #CACHE_FILE=cached_view.json
+
+    # =============================================================================
+    # IBM COS (for cache-based ingestion)
+    # =============================================================================
+    COS_ENDPOINT=https://s3.us-south.cloud-object-storage.appdomain.cloud
+    COS_API_KEY_ID=8QDFVzgtkUndjaN_TBAByMiyOxamcYLbN7C-ows7dN5g
+    COS_INSTANCE_CRN=crn:v1:bluemix:public:cloud-object-storage:global:a/e7bbf325f0a5600741fdd4207706ad22:6e035d09-2354-48a0-9b88-6639267d6c09::
+    COS_AUTH_ENDPOINT=https://iam.cloud.ibm.com/identity/token
+    SOURCE_BUCKET=ariba-massive-export-2022
+
+
+
+

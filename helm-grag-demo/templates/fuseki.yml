@@ -1,0 +1,219 @@
+# apiVersion: apps/v1
+# kind: Deployment
+# metadata:
+#   name: fuseki
+#   namespace: contract-kg-demo
+# spec:
+#   replicas: 1
+#   selector:
+#     matchLabels:
+#       app: fuseki
+#   template:
+#     metadata:
+#       labels:
+#         app: fuseki
+#     spec:
+#       securityContext:
+#         fsGroupChangePolicy: "OnRootMismatch"
+#       initContainers:
+#         - name: shiro-init
+#           image: busybox
+#           command: ['sh', '-c', 'cp /fuseki/shiro-custom.ini /fuseki/shiro.ini']
+#           volumeMounts:
+#             - name: fuseki-data
+#               mountPath: /fuseki
+#             - name: shiro-config
+#               mountPath: /fuseki/shiro-custom.ini
+#               subPath: shiro.ini  
+#       containers:
+#         - name: fuseki
+#           image: stain/jena-fuseki:latest
+#           ports:
+#             - containerPort: 3030
+
+#           env:
+#           - name: FUSEKI_DATASET
+#             value: "contracts"  
+#           - name: ADMIN_PASSWORD
+#             value: "admin123"   
+#           # - name: ADMIN_PASSWORD
+#           #   valueFrom:
+#           #     secretKeyRef:
+#           #       name: contract-kg-demo-secrets
+#           #       key: FUSEKI_PASSWORD
+#           # - name: ADMIN_USERNAME
+#           #   valueFrom:
+#           #     secretKeyRef:
+#           #       name: contract-kg-demo-secrets
+#           #       key: FUSEKI_USERNAME      
+
+#           - name: JVM_ARGS
+#             valueFrom:
+#               configMapKeyRef:
+#                 name: fuseki-config
+#                 key: JVM_ARGS
+
+#           volumeMounts:
+#             - name: fuseki-data
+#               mountPath: /fuseki
+#             - name: shiro-config
+#               mountPath: /fuseki/shiro-custom.ini
+#               subPath: shiro.ini  
+
+#           securityContext:
+#             allowPrivilegeEscalation: false
+#             capabilities:
+#               drop:
+#                 - ALL
+
+#           readinessProbe:
+#             httpGet:
+#               path: /$/ping
+#               port: 3030
+#             initialDelaySeconds: 20
+#             periodSeconds: 10
+
+#           livenessProbe:
+#             httpGet:
+#               path: /$/ping
+#               port: 3030
+#             initialDelaySeconds: 60
+#             periodSeconds: 20
+
+#       volumes:
+#         - name: shiro-config
+#           configMap:
+#             name: fuseki-shiro  
+#         - name: fuseki-data
+#           persistentVolumeClaim:
+#             claimName: fuseki-pvc    
+
+
+
+
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fuseki
+  namespace: contract-kg-demo
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: fuseki
+  template:
+    metadata:
+      labels:
+        app: fuseki
+    spec:
+      securityContext:
+        fsGroupChangePolicy: "OnRootMismatch"
+
+      initContainers:
+        # Init 1: Copy shiro.ini for auth config
+        - name: shiro-init
+          image: busybox
+          command: ['sh', '-c', 'cp /fuseki/shiro-custom.ini /fuseki/shiro.ini && echo "shiro.ini copied successfully"']
+          volumeMounts:
+            - name: fuseki-data
+              mountPath: /fuseki
+            - name: shiro-config
+              mountPath: /fuseki/shiro-custom.ini
+              subPath: shiro.ini
+
+        # Init 2: Auto-create contracts dataset config
+        - name: dataset-init
+          image: busybox
+          command:
+            - sh
+            - -c
+            - |
+              mkdir -p /fuseki/configuration
+              if [ ! -f /fuseki/configuration/contracts.ttl ]; then
+                cat > /fuseki/configuration/contracts.ttl << 'EOF'
+              @prefix :       <#> .
+              @prefix fuseki: <http://jena.apache.org/fuseki#> .
+              @prefix rdf:    <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+              @prefix tdb2:   <http://jena.apache.org/2016/tdb#> .
+              @prefix ja:     <http://jena.hpl.hp.com/2005/11/Assembler#> .
+
+              :service_contracts a fuseki:Service ;
+                  fuseki:name "contracts" ;
+                  fuseki:endpoint [ fuseki:operation fuseki:query  ; fuseki:name "sparql" ] ;
+                  fuseki:endpoint [ fuseki:operation fuseki:query  ; fuseki:name "query"  ] ;
+                  fuseki:endpoint [ fuseki:operation fuseki:update ; fuseki:name "update" ] ;
+                  fuseki:endpoint [ fuseki:operation fuseki:gsp-r  ; fuseki:name "get"    ] ;
+                  fuseki:endpoint [ fuseki:operation fuseki:gsp-rw ; fuseki:name "data"   ] ;
+                  fuseki:dataset :dataset_contracts .
+
+              :dataset_contracts a tdb2:DatasetTDB2 ;
+                  tdb2:location "/fuseki/databases/contracts" .
+              EOF
+                echo "SUCCESS: contracts.ttl created"
+              else
+                echo "SKIP: contracts.ttl already exists"
+              fi
+          volumeMounts:
+            - name: fuseki-data
+              mountPath: /fuseki
+
+      containers:
+        - name: fuseki
+          image: stain/jena-fuseki:latest
+          ports:
+            - containerPort: 3030
+
+          env:
+            - name: FUSEKI_DATASET
+              value: "contracts"
+            - name: ADMIN_PASSWORD
+              value: "admin123"
+            - name: JVM_ARGS
+              valueFrom:
+                configMapKeyRef:
+                  name: fuseki-config
+                  key: JVM_ARGS
+
+          volumeMounts:
+            - name: fuseki-data
+              mountPath: /fuseki
+            - name: shiro-config
+              mountPath: /fuseki/shiro-custom.ini
+              subPath: shiro.ini
+
+          resources:
+            requests:
+              cpu: "2"
+              memory: "4Gi"
+            limits:
+              cpu: "3"
+              memory: "6Gi"
+              
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+
+          readinessProbe:
+            httpGet:
+              path: /$/ping
+              port: 3030
+            initialDelaySeconds: 20
+            periodSeconds: 10
+
+          livenessProbe:
+            httpGet:
+              path: /$/ping
+              port: 3030
+            initialDelaySeconds: 60
+            periodSeconds: 20
+
+      volumes:
+        - name: shiro-config
+          configMap:
+            name: fuseki-shiro
+        - name: fuseki-data
+          persistentVolumeClaim:
+            claimName: fuseki-pvc

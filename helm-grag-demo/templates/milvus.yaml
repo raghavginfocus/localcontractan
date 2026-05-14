@@ -1,0 +1,69 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: milvus
+  namespace: contract-kg-demo
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: milvus
+  template:
+    metadata:
+      labels:
+        app: milvus
+    spec:
+      containers:
+        - name: milvus
+          image: milvusdb/milvus:v2.3.4
+          args: ["milvus", "run", "standalone"]
+
+          env:
+            - name: ETCD_ENDPOINTS
+              value: http://etcd:2379 #http://etcd.contract-kg-demo.svc.cluster.local:2379 #http://etcd.contract-kg-demo.svc.cluster.local
+            - name: MINIO_ADDRESS
+              value: minio:9000 
+            - name: MINIO_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: contract-kg-demo-secrets
+                  key: MINIO_ACCESS_KEY
+            - name: MINIO_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: contract-kg-demo-secrets
+                  key: MINIO_SECRET_KEY
+
+          ports:
+            - containerPort: 19530
+            - containerPort: 9091
+
+          volumeMounts:
+            - name: env-file
+              mountPath: /app/.env
+            - name: milvus-data
+              mountPath: /var/lib/milvus
+            # - name: minio-data
+            #   mountPath: /data  
+          
+          resources:
+            requests:
+              cpu: "2"
+              memory: "4Gi"
+            limits:
+              cpu: "4"
+              memory: "6Gi"
+
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+
+      volumes:  
+        - name: milvus-data
+          persistentVolumeClaim:
+            claimName: milvus-pvc 
+        - name: env-file
+          configMap:
+            name: agents-env-config     

@@ -1,0 +1,125 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ingestion-api
+  namespace: contract-kg-demo
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ingestion-api
+  template:
+    metadata:
+      labels:
+        app: ingestion-api
+    spec:
+      imagePullSecrets:
+        - name: ibm-registry-secret
+
+      containers:
+        - name: ingestion-api
+          image: us.icr.io/projects-common-registry-ns/grag-contract-analysis-docling:v14
+          command: ["python","-m","uvicorn","api.ingestion_service:app","--host","0.0.0.0","--port","8001"]
+
+          ports:
+            - containerPort: 8001
+
+          resources:
+            requests:
+              cpu: "2"
+              memory: "4Gi"
+            limits:
+              cpu: "3"
+              memory: "6Gi"
+
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+
+          env:
+            - name: FUSEKI_URL
+              value: http://fuseki:3030
+            
+            # UNCOMMENT AND FIX THESE (lines 43-48)
+            - name: FUSEKI_DATASET
+              value: contracts  # NOT "fuseki:3030" - just "contracts"
+            
+            # - name: FUSEKI_USERNAME
+            #   value: "admin"
+            
+            # - name: FUSEKI_PASSWORD
+            #   value: "admin123"  
+
+            - name: MILVUS_HOST
+              value: milvus
+            - name: MILVUS_PORT
+              value: "19530"
+            - name: PHOENIX_COLLECTOR_ENDPOINT
+              value: http://phoenix:4317
+            - name: PHOENIX_ENABLED
+              value: "true"
+            - name: PYTHONUNBUFFERED
+              value: "1"
+
+            - name: OBJECT_STORAGE_ENDPOINT
+              value: http://minio:9000
+            - name: OBJECT_STORAGE_ACCESS_KEY
+              value: minioadmin
+            - name: OBJECT_STORAGE_SECRET_KEY
+              value: minioadmin
+            - name: OBJECT_STORAGE_BUCKET
+              value: procurement-contracts
+            - name: OBJECT_STORAGE_REGION
+              value: us-east-1
+
+            # 👇 ADD THIS (CRITICAL FIX)
+            - name: PHOENIX_WORKING_DIR 
+              value: /app/data/.phoenix  
+
+            - name: PHOENIX_PORT
+              value: "4317"  
+
+          volumeMounts:
+            - name: env-file
+              mountPath: /app/.env
+              subPath: .env
+            - name: logs
+              mountPath: /app/logs
+            - name: checkpoints
+              mountPath: /app/checkpoints
+            - name: data
+              mountPath: /app/data
+            - name: examples
+              mountPath: /app/examples
+            - name: hf-cache
+              mountPath: /app/cache
+            - name: ontology-files
+              mountPath: /app/ontology
+              readOnly: true  
+
+
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8001
+            initialDelaySeconds: 120
+            periodSeconds: 10
+
+      volumes:
+        - name: env-file
+          configMap:
+            name: agents-env-config
+        - name: logs
+          emptyDir: {}
+        - name: checkpoints
+          emptyDir: {}
+        - name: data
+          emptyDir: {}
+        - name: examples
+          emptyDir: {}
+        - name: hf-cache
+          emptyDir: {}
+        - name: ontology-files
+          configMap:
+            name: ontology-files  

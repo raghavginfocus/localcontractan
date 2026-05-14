@@ -1,0 +1,6 @@
+apiVersion: v2
+name: contract-kg-demo
+description: Contract Knowledge Graph Stack
+type: application
+version: 1.0.0
+appVersion: "1.0"

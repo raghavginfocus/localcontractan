@@ -1,0 +1,107 @@
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: api-gateway
+  annotations:
+    haproxy.router.openshift.io/timeout: 300s
+  namespace: contract-kg-demo
+spec:
+  to:
+    kind: Service
+    name: api-gateway
+  port:
+    targetPort: http
+  tls:
+    termination: edge  
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: ingestion-api
+  annotations:
+    haproxy.router.openshift.io/timeout: 300s
+  namespace: contract-kg-demo
+spec:
+  to:
+    kind: Service
+    name: ingestion-api
+  port:
+    targetPort: http
+  tls:
+    termination: edge  
+---
+
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: retrieval-api
+  annotations:
+    haproxy.router.openshift.io/timeout: 300s
+  namespace: contract-kg-demo
+spec:
+  to:
+    kind: Service
+    name: retrieval-api
+  port:
+    targetPort: http
+  tls:
+    termination: edge  
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: fuseki
+  namespace: contract-kg-demo
+  annotations:
+    haproxy.router.openshift.io/set-forwarded-headers: replace
+spec:
+  to:
+    kind: Service
+    name: fuseki
+  port:
+    targetPort: http
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: phoenix
+  namespace: contract-kg-demo
+spec:
+  to:
+    kind: Service
+    name: phoenix
+  port:
+    targetPort: http
+  tls:
+    termination: edge  
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: attu
+  namespace: contract-kg-demo
+spec:
+  to:
+    kind: Service
+    name: attu
+  port:
+    targetPort: http
+  tls:
+    termination: edge  
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: minio
+  namespace: contract-kg-demo
+spec:
+  to:
+    kind: Service
+    name: minio
+  port:
+    targetPort: console
+  tls:
+    termination: edge  

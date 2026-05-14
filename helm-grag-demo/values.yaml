@@ -1,0 +1,11 @@
+replicaCount: 1
+
+storage:
+  fuseki: 5Gi
+  milvus: 20Gi
+  minio: 10Gi
+
+resources:
+  limits:
+    cpu: "1"
+    memory: "2Gi"
