@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>contract.owl + contract-clauses.ttl — Excel Mapping</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  background: #0d1117;
+  color: #c9d1d9;
+}
+
+/* ── HEADER ── */
+header {
+  background: linear-gradient(135deg, #161b22 0%, #1c2333 100%);
+  border-bottom: 1px solid #30363d;
+  padding: 20px 32px;
+}
+header h1 { font-size: 1.35rem; font-weight: 700; color: #e6edf3; }
+header p  { font-size: 0.82rem; color: #8b949e; margin-top: 4px; line-height: 1.5; }
+
+/* ── EXPLAINER CARD (contract-clauses.ttl) ── */
+.explainer {
+  margin: 20px 32px;
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-left: 4px solid #58a6ff;
+  border-radius: 8px;
+  padding: 18px 22px;
+}
+.explainer h2 { font-size: 1rem; color: #58a6ff; margin-bottom: 10px; }
+.explainer p  { font-size: 0.83rem; line-height: 1.6; color: #c9d1d9; margin-bottom: 6px; }
+.explainer code {
+  background: #0d1117;
+  border: 1px solid #30363d;
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-size: 0.8rem;
+  color: #79c0ff;
+}
+.explainer .file-role {
+  display: inline-flex; align-items: center; gap: 8px;
+  background: #0d1117; border: 1px solid #30363d; border-radius: 6px;
+  padding: 6px 12px; margin: 4px 4px 4px 0;
+  font-size: 0.78rem;
+}
+.explainer .file-role .tag {
+  background: #1f6feb33; color: #58a6ff;
+  border-radius: 3px; padding: 1px 6px; font-weight: 600; font-size: 0.72rem;
+}
+
+/* ── STATS STRIP ── */
+.stats-strip {
+  display: flex; gap: 10px; flex-wrap: wrap;
+  padding: 14px 32px;
+  background: #0d1117;
+  border-bottom: 1px solid #21262d;
+}
+.stat-pill {
+  display: flex; align-items: center; gap: 7px;
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 20px;
+  padding: 5px 12px;
+  font-size: 0.77rem;
+}
+.stat-pill .dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+.stat-pill strong { color: #e6edf3; font-size: 0.95rem; margin-left: 3px; }
+
+/* ── TABS ── */
+.tabs {
+  display: flex;
+  padding: 0 32px;
+  background: #161b22;
+  border-bottom: 1px solid #21262d;
+}
+.tab-btn {
+  padding: 11px 22px; cursor: pointer;
+  background: none; border: none;
+  border-bottom: 3px solid transparent;
+  color: #8b949e; font-size: 0.87rem; font-weight: 600; transition: all .2s;
+}
+.tab-btn.active { color: #58a6ff; border-bottom-color: #58a6ff; }
+.tab-btn:hover:not(.active) { color: #c9d1d9; }
+
+/* ── LEGEND ── */
+.legend {
+  display: flex; flex-wrap: wrap; gap: 10px;
+  padding: 12px 32px;
+  background: #0d1117;
+  border-bottom: 1px solid #21262d;
+  font-size: 0.75rem;
+}
+.legend-item { display: flex; align-items: center; gap: 6px; }
+.legend-swatch { width: 11px; height: 11px; border-radius: 3px; flex-shrink:0; }
+
+/* ── TAB PANELS ── */
+.tab-panel { display: none; }
+.tab-panel.active { display: block; }
+
+/* ── BIPARTITE AREA ── */
+.bipartite-wrapper {
+  padding: 20px 32px;
+  overflow-x: auto;
+}
+svg.bipartite { width: 100%; display: block; }
+
+/* ── DETAIL PANEL ── */
+.detail-panel {
+  margin: 0 32px 24px;
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 8px;
+  padding: 14px 18px;
+  font-size: 0.82rem;
+  min-height: 60px;
+  color: #8b949e;
+}
+.detail-panel h3 { color: #e6edf3; font-size: 0.9rem; margin-bottom: 6px; }
+.detail-panel .badge {
+  display: inline-block; padding: 2px 8px; border-radius: 4px;
+  font-size: 0.7rem; font-weight: 600; margin-left: 8px; vertical-align: middle;
+}
+.detail-panel code {
+  background: #0d1117; border: 1px solid #30363d; border-radius: 4px;
+  padding: 1px 5px; font-size: 0.78rem; color: #79c0ff;
+}
+
+/* ── TOOLTIP ── */
+.tooltip {
+  position: fixed;
+  background: #161b22;
+  border: 1px solid #58a6ff;
+  border-radius: 8px;
+  padding: 9px 13px;
+  font-size: 0.77rem;
+  color: #c9d1d9;
+  pointer-events: none;
+  z-index: 999;
+  max-width: 320px;
+  line-height: 1.5;
+  display: none;
+  box-shadow: 0 8px 24px rgba(0,0,0,.5);
+}
+.tooltip strong { color: #e6edf3; display: block; margin-bottom: 3px; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>contract.owl + contract-clauses.ttl — Mapping to Excel Specification</h1>
+  <p>
+    Schema-level view: which Excel fields / clause types are modelled in the active ontology files vs missing.<br>
+    <em>(This is about the ontology schema coverage, not data extraction — compare with coverage-map-CW3157888.html for data-level coverage.)</em>
+  </p>
+</header>
+
+<!-- ── EXPLAINER ── -->
+<div class="explainer">
+  <h2>What is contract-clauses.ttl and how does it relate to contract.owl?</h2>
+
+  <p>Both files live at <code>agents/src/agents/ingestion/new_ontology/</code> and are loaded at runtime via <code>config.py</code>. They model the same domain but serve different purposes:</p>
+
+  <div style="margin:12px 0; display:flex; gap:12px; flex-wrap:wrap;">
+    <div class="file-role">
+      <span class="tag">contract.owl</span>
+      <span><strong style="color:#e6edf3">OWL ontology</strong> — defines the vocabulary: classes, object &amp; datatype properties, cardinality restrictions, named individuals for ClauseType and EntityType. Loaded by the <strong style="color:#e6edf3">reasoning agent</strong> to build the knowledge graph and run OWL inference.</span>
+    </div>
+    <div class="file-role">
+      <span class="tag">contract-clauses.ttl</span>
+      <span><strong style="color:#e6edf3">Turtle = OWL + SHACL</strong> — re-declares the same ontology in compact Turtle syntax <em>and</em> adds SHACL shapes for validation. Loaded by the <strong style="color:#e6edf3">ingestion pipeline</strong> to validate that every extracted ContractFile, Clause, and Entity satisfies structural constraints (min/max counts, allowed clause types via <code>sh:in</code> lists).</span>
+    </div>
+  </div>
+
+  <p><strong style="color:#e6edf3">Key difference:</strong> <code>contract.owl</code> is the authoritative ontology used for reasoning. <code>contract-clauses.ttl</code> is a Turtle serialisation of the same ontology <em>plus</em> SHACL validation shapes. When both are loaded, SHACL catches malformed RDF triples before they enter the triplestore.</p>
+
+  <p style="margin-top:8px"><strong style="color:#e6edf3">Important overlap:</strong> <code>contract-clauses.ttl</code> uses <code>proc:clauseText</code> while the SHACL shapes in <code>contract_shapes.ttl</code> (under <code>schemas/shacl/</code>) use <code>proc:rawText</code> — these are <strong style="color:#f85149">inconsistent</strong> and will cause SHACL validation gaps if both files are used together.</p>
+</div>
+
+<!-- ── STATS ── -->
+<div class="stats-strip" id="statsStrip"></div>
+
+<!-- ── TABS ── -->
+<div class="tabs">
+  <button class="tab-btn active" onclick="showTab('clauses',this)">Clause Types</button>
+  <button class="tab-btn" onclick="showTab('metadata',this)">Metadata Properties</button>
+  <button class="tab-btn" onclick="showTab('shacl',this)">SHACL Shapes (TTL)</button>
+</div>
+
+<!-- ── LEGEND ── -->
+<div class="legend">
+  <div class="legend-item"><div class="legend-swatch" style="background:#238636"></div>Mapped — Excel category has a matching OWL element</div>
+  <div class="legend-item"><div class="legend-swatch" style="background:#9e6a03"></div>Partial — conceptually close but different naming / granularity</div>
+  <div class="legend-item"><div class="legend-swatch" style="background:#da3633"></div>Missing — Excel requires it; not modelled in OWL</div>
+  <div class="legend-item"><div class="legend-swatch" style="background:#6e40c9"></div>Extra — in OWL but not in Excel spec</div>
+  <div class="legend-item"><div class="legend-swatch" style="background:#1f6feb"></div>SHACL only — defined in contract-clauses.ttl shapes, not in .owl</div>
+</div>
+
+<!-- ── CLAUSE TAB ── -->
+<div id="tab-clauses" class="tab-panel active">
+  <div class="bipartite-wrapper"><svg id="svgClauses" class="bipartite"></svg></div>
+  <div class="detail-panel" id="detailClauses"><span>Click or hover a node for details.</span></div>
+</div>
+
+<!-- ── METADATA TAB ── -->
+<div id="tab-metadata" class="tab-panel">
+  <div class="bipartite-wrapper"><svg id="svgMeta" class="bipartite"></svg></div>
+  <div class="detail-panel" id="detailMeta"><span>Click or hover a node for details.</span></div>
+</div>
+
+<!-- ── SHACL TAB ── -->
+<div id="tab-shacl" class="tab-panel">
+  <div class="bipartite-wrapper"><svg id="svgShacl" class="bipartite"></svg></div>
+  <div class="detail-panel" id="detailShacl"><span>Click or hover a node for details.</span></div>
+</div>
+
+<div class="tooltip" id="tooltip"></div>
+
+<script>
+// ════════════════════════════════════════════════════════════
+// STATUS COLOURS
+// ════════════════════════════════════════════════════════════
+const C = {
+  mapped:   '#238636',
+  partial:  '#9e6a03',
+  missing:  '#da3633',
+  extra:    '#6e40c9',
+  shacl:    '#1f6feb',
+};
+const CL = {
+  mapped:   '#2ea043',
+  partial:  '#d29922',
+  missing:  '#f85149',
+  extra:    '#a371f7',
+  shacl:    '#58a6ff',
+};
+
+// ════════════════════════════════════════════════════════════
+// DATA — CLAUSE TYPES
+// ════════════════════════════════════════════════════════════
+const EXCEL_CL = [
+  { id:'ec1',  label:'Audit / Right to Audit',       status:'mapped',  note:'→ proc:AuditClause (ClauseType individual in contract.owl)' },
+  { id:'ec2',  label:'Confidentiality',              status:'mapped',  note:'→ proc:ConfidentialityClause' },
+  { id:'ec3',  label:'Indemnification',              status:'mapped',  note:'→ proc:IndemnificationClause' },
+  { id:'ec4',  label:'Record Keeping & Audit',       status:'mapped',  note:'→ proc:RecordKeepingAndAuditClause' },
+  { id:'ec5',  label:'Best Possible Pricing',        status:'mapped',  note:'→ proc:BestpricingClause' },
+  { id:'ec6',  label:'Early Termination',            status:'mapped',  note:'→ proc:EarlyTerminationClause' },
+  { id:'ec7',  label:'Intellectual Property',        status:'mapped',  note:'→ proc:IntellectualPropertyClause' },
+  { id:'ec8',  label:'Liability',                    status:'mapped',  note:'→ proc:LiabilityClause' },
+  { id:'ec9',  label:'Reporting Requirements',       status:'mapped',  note:'→ proc:ReportingRequirementsClause' },
+  { id:'ec10', label:'Subcontractors / Personnel',   status:'mapped',  note:'→ proc:SupplierAndPersonnelClause (partial name match)' },
+  { id:'ec11', label:'Change Controls',              status:'mapped',  note:'→ proc:ContractchangeClause' },
+  { id:'ec12', label:'SSPA',                         status:'mapped',  note:'→ proc:SSPAClause (Data, Technology, privacy conditions)' },
+  { id:'ec13', label:'Acceptance Criteria',          status:'mapped',  note:'→ proc:AcceptanceCriteriaClause' },
+  { id:'ec14', label:'Arbitration',                  status:'mapped',  note:'→ proc:ArbitrationClause' },
+  { id:'ec15', label:'Benchmarking / Quality',       status:'mapped',  note:'→ proc:BenchmarkTestingClause' },
+  { id:'ec16', label:'Assignment',                   status:'mapped',  note:'→ proc:AssignmentClause' },
+  { id:'ec17', label:'Business Continuity Plan',     status:'mapped',  note:'→ proc:BusinessContinuityClause' },
+  { id:'ec18', label:'Data Privacy',                 status:'mapped',  note:'→ proc:DataPrivacyProtectionClause (combines Data Privacy + Data Protection)' },
+  { id:'ec19', label:'Data Protection',              status:'partial', note:'Partially covered by proc:DataPrivacyProtectionClause — merged rather than separate' },
+  { id:'ec20', label:'Dispute Resolution',           status:'mapped',  note:'→ proc:DisputeResolutionClause' },
+  { id:'ec21', label:'Force Majeure',                status:'mapped',  note:'→ proc:ForceMajeureClause' },
+  { id:'ec22', label:'Governing Law',                status:'mapped',  note:'→ proc:GoverningLawClause' },
+  { id:'ec23', label:'Insurance',                    status:'mapped',  note:'→ proc:InsuranceClause' },
+  { id:'ec24', label:'Location',                     status:'mapped',  note:'→ proc:LocationClause' },
+  { id:'ec25', label:'IBM Name / Likeness',          status:'mapped',  note:'→ proc:PermissionOfUsingIbmNameLikenessClause' },
+  { id:'ec26', label:'Product Warranty',             status:'mapped',  note:'→ proc:ProductWarrantyClause' },
+  { id:'ec27', label:'SRA Inclusion Text',           status:'mapped',  note:'→ proc:SraInclusionTextClause' },
+  { id:'ec28', label:'Termination',                  status:'mapped',  note:'→ proc:TerminationClause' },
+  { id:'ec29', label:'Renewal',                      status:'missing', note:'No RenewalClause individual in contract.owl or contract-clauses.ttl' },
+  { id:'ec30', label:'Use of IBM Materials',         status:'missing', note:'Not modelled in ontology' },
+  { id:'ec31', label:'Rebates',                      status:'missing', note:'Not modelled in ontology' },
+];
+
+const OWL_CL = [
+  { id:'oc1',  label:'proc:ArbitrationClause',                    status:'mapped',  note:'ClauseType individual; in sh:in list in contract-clauses.ttl' },
+  { id:'oc2',  label:'proc:ForceMajeureClause',                   status:'mapped',  note:'ClauseType individual' },
+  { id:'oc3',  label:'proc:AcceptanceCriteriaClause',             status:'mapped',  note:'ClauseType individual' },
+  { id:'oc4',  label:'proc:TerminationClause',                    status:'mapped',  note:'ClauseType individual; used in risk_rules.rules' },
+  { id:'oc5',  label:'proc:ConfidentialityClause',                status:'mapped',  note:'ClauseType individual' },
+  { id:'oc6',  label:'proc:SSPAClause',                           status:'mapped',  note:'ClauseType individual — Data, Technology, privacy' },
+  { id:'oc7',  label:'proc:BenchmarkTestingClause',               status:'mapped',  note:'ClauseType individual' },
+  { id:'oc8',  label:'proc:AssignmentClause',                     status:'mapped',  note:'ClauseType individual' },
+  { id:'oc9',  label:'proc:AuditClause',                          status:'mapped',  note:'ClauseType individual' },
+  { id:'oc10', label:'proc:BestpricingClause',                    status:'mapped',  note:'ClauseType individual' },
+  { id:'oc11', label:'proc:DataPrivacyProtectionClause',          status:'mapped',  note:'ClauseType individual — covers Data Privacy + Data Protection' },
+  { id:'oc12', label:'proc:BusinessContinuityClause',             status:'mapped',  note:'ClauseType individual' },
+  { id:'oc13', label:'proc:DisputeResolutionClause',              status:'mapped',  note:'ClauseType individual' },
+  { id:'oc14', label:'proc:EarlyTerminationClause',               status:'mapped',  note:'ClauseType individual' },
+  { id:'oc15', label:'proc:GoverningLawClause',                   status:'mapped',  note:'ClauseType individual' },
+  { id:'oc16', label:'proc:IndemnificationClause',                status:'mapped',  note:'ClauseType individual' },
+  { id:'oc17', label:'proc:InsuranceClause',                      status:'mapped',  note:'ClauseType individual' },
+  { id:'oc18', label:'proc:IntellectualPropertyClause',           status:'mapped',  note:'ClauseType individual' },
+  { id:'oc19', label:'proc:LiabilityClause',                      status:'mapped',  note:'ClauseType individual' },
+  { id:'oc20', label:'proc:LocationClause',                       status:'mapped',  note:'ClauseType individual' },
+  { id:'oc21', label:'proc:PermissionOfUsingIbmNameLikenessClause', status:'mapped', note:'ClauseType individual' },
+  { id:'oc22', label:'proc:ProductWarrantyClause',                status:'mapped',  note:'ClauseType individual' },
+  { id:'oc23', label:'proc:RecordKeepingAndAuditClause',          status:'mapped',  note:'ClauseType individual' },
+  { id:'oc24', label:'proc:ReportingRequirementsClause',          status:'mapped',  note:'ClauseType individual' },
+  { id:'oc25', label:'proc:SraInclusionTextClause',               status:'mapped',  note:'ClauseType individual' },
+  { id:'oc26', label:'proc:SupplierAndPersonnelClause',           status:'mapped',  note:'ClauseType individual' },
+  { id:'oc27', label:'proc:ContractchangeClause',                 status:'mapped',  note:'ClauseType individual — Change Controls' },
+];
+
+const CL_EDGES = [
+  ['ec1','oc9'],['ec2','oc5'],['ec3','oc16'],['ec4','oc23'],
+  ['ec5','oc10'],['ec6','oc14'],['ec7','oc18'],['ec8','oc19'],
+  ['ec9','oc24'],['ec10','oc26'],['ec11','oc27'],['ec12','oc6'],
+  ['ec13','oc3'],['ec14','oc1'],['ec15','oc7'],['ec16','oc8'],
+  ['ec17','oc12'],['ec18','oc11'],['ec19','oc11'],
+  ['ec20','oc13'],['ec21','oc2'],['ec22','oc15'],['ec23','oc17'],
+  ['ec24','oc20'],['ec25','oc21'],['ec26','oc22'],
+  ['ec27','oc25'],['ec28','oc4'],
+];
+
+// ════════════════════════════════════════════════════════════
+// DATA — METADATA PROPERTIES
+// ════════════════════════════════════════════════════════════
+const EXCEL_META = [
+  { id:'em1',  label:'Contract ID',           status:'mapped',  note:'→ proc:contractId (domain: Contract, xsd:string)' },
+  { id:'em2',  label:'Project Name',          status:'mapped',  note:'→ proc:projectName (domain: Contract, xsd:string)' },
+  { id:'em3',  label:'Agreement Type',        status:'mapped',  note:'→ proc:agreementType (domain: Contract + ContractFile, xsd:string)' },
+  { id:'em4',  label:'Business Unit',         status:'mapped',  note:'→ proc:businessUnit (domain: Contract + ContractFile, xsd:string)' },
+  { id:'em5',  label:'Effective Date',        status:'mapped',  note:'→ proc:effectiveDate (domain: Contract, xsd:date)' },
+  { id:'em6',  label:'Expiration Date',       status:'mapped',  note:'→ proc:expirationDate (domain: Contract, xsd:date)' },
+  { id:'em7',  label:'Contract Value',        status:'mapped',  note:'→ proc:contractValue (domain: Contract, xsd:decimal) — also used in risk_rules.rules' },
+  { id:'em8',  label:'Supplier Name',         status:'mapped',  note:'→ proc:supplierName (domain: Contract, xsd:string)' },
+  { id:'em9',  label:'Supplier ID',           status:'mapped',  note:'→ proc:supplierId (domain: Contract, xsd:string)' },
+  { id:'em10', label:'Contract Owner',        status:'mapped',  note:'→ proc:contractOwner (domain: Contract, xsd:string)' },
+  { id:'em11', label:'Signatories',           status:'mapped',  note:'→ proc:signatories (domain: Contract, xsd:string)' },
+  { id:'em12', label:'Parent Contract ID',    status:'mapped',  note:'→ proc:parentContractId (domain: Contract, xsd:string)' },
+  { id:'em13', label:'Amendment Name',        status:'mapped',  note:'→ proc:amendmentName (domain: ContractFile, xsd:string)' },
+  { id:'em14', label:'Revision Name',         status:'mapped',  note:'→ proc:revisionName (domain: ContractFile, xsd:string)' },
+  { id:'em15', label:'File Name',             status:'mapped',  note:'→ proc:fileName (domain: ContractFile, xsd:string)' },
+  { id:'em16', label:'UNSPSC Code',           status:'missing', note:'No proc:unspsc or equivalent in contract.owl or contract-clauses.ttl' },
+  { id:'em17', label:'Firm Commitments',      status:'missing', note:'No property modelled; not in ontology' },
+  { id:'em18', label:'Renewal Date',          status:'partial', note:'proc:RenewalDateEntity exists as an EntityType individual, but no direct datatype property' },
+];
+
+const OWL_META = [
+  { id:'om1',  label:'proc:contractId',        status:'mapped',  note:'xsd:string; domain: Contract' },
+  { id:'om2',  label:'proc:projectName',       status:'mapped',  note:'xsd:string; domain: Contract' },
+  { id:'om3',  label:'proc:agreementType',     status:'mapped',  note:'xsd:string; domain: Contract + ContractFile (declared twice)' },
+  { id:'om4',  label:'proc:businessUnit',      status:'mapped',  note:'xsd:string; domain: Contract + ContractFile (declared twice)' },
+  { id:'om5',  label:'proc:effectiveDate',     status:'mapped',  note:'xsd:date; domain: Contract' },
+  { id:'om6',  label:'proc:expirationDate',    status:'mapped',  note:'xsd:date; domain: Contract' },
+  { id:'om7',  label:'proc:contractValue',     status:'mapped',  note:'xsd:decimal; domain: Contract; used in HighValueContract rule' },
+  { id:'om8',  label:'proc:supplierName',      status:'mapped',  note:'xsd:string; domain: Contract' },
+  { id:'om9',  label:'proc:supplierId',        status:'mapped',  note:'xsd:string; domain: Contract' },
+  { id:'om10', label:'proc:contractOwner',     status:'mapped',  note:'xsd:string; domain: Contract' },
+  { id:'om11', label:'proc:signatories',       status:'mapped',  note:'xsd:string; domain: Contract' },
+  { id:'om12', label:'proc:parentContractId',  status:'mapped',  note:'xsd:string; domain: Contract' },
+  { id:'om13', label:'proc:amendmentName',     status:'mapped',  note:'xsd:string; domain: ContractFile' },
+  { id:'om14', label:'proc:revisionName',      status:'mapped',  note:'xsd:string; domain: ContractFile' },
+  { id:'om15', label:'proc:fileName',          status:'mapped',  note:'xsd:string; domain: ContractFile' },
+  { id:'om16', label:'proc:documentId',        status:'extra',   note:'Internal system property — not in Excel spec' },
+  { id:'om17', label:'proc:documentPath',      status:'extra',   note:'File system path — not in Excel spec' },
+  { id:'om18', label:'proc:documentType',      status:'extra',   note:'Document type flag — not in Excel spec' },
+  { id:'om19', label:'proc:status',            status:'extra',   note:'Contract lifecycle status — not in Excel spec' },
+  { id:'om20', label:'proc:ownerId',           status:'extra',   note:'Internal owner identifier — not in Excel spec' },
+  { id:'om21', label:'proc:ownerName',         status:'extra',   note:'Owner display name — not in Excel spec' },
+  { id:'om22', label:'proc:parentContract',    status:'extra',   note:'Datatype property (string) AND object property hasParentContract both defined — potential inconsistency' },
+  { id:'om23', label:'proc:RenewalDateEntity', status:'partial', note:'EntityType individual, not a datatype property — indirect coverage of Renewal Date' },
+];
+
+const META_EDGES = [
+  ['em1','om1'],['em2','om2'],['em3','om3'],['em4','om4'],
+  ['em5','om5'],['em6','om6'],['em7','om7'],['em8','om8'],
+  ['em9','om9'],['em10','om10'],['em11','om11'],['em12','om12'],
+  ['em13','om13'],['em14','om14'],['em15','om15'],
+  ['em18','om23'],
+];
+
+// ════════════════════════════════════════════════════════════
+// DATA — SHACL SHAPES (contract-clauses.ttl)
+// ════════════════════════════════════════════════════════════
+const EXCEL_SHACL = [
+  { id:'es1',  label:'Contract has ≥1 file',      status:'mapped', note:'Validated by ContractShape sh:property proc:hasContractFile sh:minCount 1' },
+  { id:'es2',  label:'File belongs to ≤1 contract', status:'mapped', note:'ContractFileShape: proc:belongsToContract sh:minCount 1 sh:maxCount 1' },
+  { id:'es3',  label:'Clause has text',            status:'mapped', note:'ClauseShape: proc:clauseText sh:minCount 0 — NOTE: uses clauseText not rawText' },
+  { id:'es4',  label:'Clause type is valid enum',  status:'mapped', note:'ClauseShape: sh:in list of all 27 ClauseType individuals — enforces ontology types only' },
+  { id:'es5',  label:'Entity type is valid enum',  status:'mapped', note:'EntityShape: sh:in (ContractingParty EffectiveDateEntity ExpirationDateEntity RenewalDateEntity PaymentAmountEntity)' },
+  { id:'es6',  label:'Contract has ≤1 parent',     status:'mapped', note:'ContractShape: proc:hasParentContract sh:maxCount 1' },
+  { id:'es7',  label:'Clause text is string',      status:'mapped', note:'Implicitly via xsd:string range on proc:clauseText' },
+  { id:'es8',  label:'Validate rawText on clause', status:'missing', note:'contract-clauses.ttl uses proc:clauseText; the other SHACL file (contract_shapes.ttl) validates proc:rawText — inconsistency means rawText is NOT validated here' },
+  { id:'es9',  label:'Clause belongs to contract', status:'missing', note:'No SPARQL constraint in contract-clauses.ttl; present in contract_shapes.ttl only' },
+  { id:'es10', label:'ContractValue ≥0 constraint', status:'missing', note:'Declared in contract_shapes.ttl; not repeated in contract-clauses.ttl' },
+];
+
+const TTL_SHAPES = [
+  { id:'ts1',  label:'proc:ContractShape',         status:'mapped',  note:'sh:NodeShape targeting proc:Contract — validates hasContractFile minCount, hasParentContract maxCount' },
+  { id:'ts2',  label:'proc:ContractFileShape',     status:'mapped',  note:'sh:NodeShape targeting proc:ContractFile — validates belongsToContract (min=max=1), hasClause, hasEntity' },
+  { id:'ts3',  label:'proc:ClauseShape',           status:'mapped',  note:'sh:NodeShape targeting proc:Clause — clauseText minCount 0, hasClauseType sh:in(27 types)' },
+  { id:'ts4',  label:'proc:EntityShape',           status:'mapped',  note:'sh:NodeShape targeting proc:Entity — entityValue minCount 0, hasEntityType sh:in(5 types)' },
+];
+
+const SHACL_EDGES = [
+  ['es1','ts1'],['es2','ts2'],['es3','ts3'],['es4','ts3'],
+  ['es5','ts4'],['es6','ts1'],['es7','ts3'],
+];
+
+// ════════════════════════════════════════════════════════════
+// STATS
+// ════════════════════════════════════════════════════════════
+function buildStats() {
+  function count(arr, s) { return arr.filter(d=>d.status===s).length; }
+  const clM = count(EXCEL_CL,'mapped'), clP = count(EXCEL_CL,'partial'), clX = count(EXCEL_CL,'missing');
+  const mtM = count(EXCEL_META,'mapped'), mtP = count(EXCEL_META,'partial'), mtX = count(EXCEL_META,'missing');
+  const shM = count(EXCEL_SHACL,'mapped'), shX = count(EXCEL_SHACL,'missing');
+
+  document.getElementById('statsStrip').innerHTML = `
+    <div class="stat-pill"><div class="dot" style="background:${C.mapped}"></div>Clause types in OWL<strong>${clM}/${EXCEL_CL.length}</strong></div>
+    <div class="stat-pill"><div class="dot" style="background:${C.partial}"></div>Partial<strong>${clP}</strong></div>
+    <div class="stat-pill"><div class="dot" style="background:${C.missing}"></div>Missing clause types<strong>${clX}</strong></div>
+    <div class="stat-pill" style="border-color:#30363d;margin-left:8px"><div class="dot" style="background:${C.mapped}"></div>Metadata props in OWL<strong>${mtM}/${EXCEL_META.length}</strong></div>
+    <div class="stat-pill"><div class="dot" style="background:${C.missing}"></div>Missing meta props<strong>${mtX}</strong></div>
+    <div class="stat-pill" style="border-color:#1f6feb"><div class="dot" style="background:${C.shacl}"></div>SHACL constraints (TTL)<strong>${shM}/${EXCEL_SHACL.length}</strong></div>
+  `;
+}
+
+// ════════════════════════════════════════════════════════════
+// BIPARTITE RENDERER
+// ════════════════════════════════════════════════════════════
+function renderBipartite({ svgId, leftNodes, rightNodes, edges, detailId }) {
+  const ROW_H = 30, PAD_Y = 28, COL_W = 280, MID_GAP = 200, RECT_H = 22, RX = 4, CR = 6;
+  const rows = Math.max(leftNodes.length, rightNodes.length);
+  const H = rows * ROW_H + PAD_Y * 2 + 18;
+  const W = COL_W * 2 + MID_GAP + 40;
+
+  const svg = document.getElementById(svgId);
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  svg.setAttribute('height', H);
+  svg.innerHTML = '';
+  const ns = 'http://www.w3.org/2000/svg';
+  const el = (tag, attrs, parent) => {
+    const e = document.createElementNS(ns, tag);
+    for (const [k,v] of Object.entries(attrs)) e.setAttribute(k,v);
+    if (parent) parent.appendChild(e);
+    return e;
+  };
+
+  // column headers
+  el('text',{x:COL_W/2,y:16,'text-anchor':'middle',fill:'#8b949e','font-size':'11','font-weight':'600'},svg).textContent = '← Excel Specification';
+  el('text',{x:COL_W+MID_GAP+COL_W/2,y:16,'text-anchor':'middle',fill:'#8b949e','font-size':'11','font-weight':'600'},svg).textContent = 'OWL / TTL Elements →';
+
+  const lPos={}, rPos={};
+
+  leftNodes.forEach((node,i)=>{
+    const y = PAD_Y + 12 + i*ROW_H;
+    lPos[node.id]={x:COL_W,y};
+    const g=el('g',{cursor:'pointer'},svg);
+    const col=CL[node.status]||'#8b949e';
+    el('rect',{x:4,y:y-RECT_H/2,width:COL_W-16,height:RECT_H,rx:RX,fill:C[node.status]+'1a',stroke:C[node.status],'stroke-width':'1'},g);
+    const t=el('text',{x:COL_W-20,y:y+4,'text-anchor':'end',fill:col,'font-size':'11'},g);
+    t.textContent=node.label.length>32?node.label.slice(0,30)+'…':node.label;
+    el('circle',{cx:COL_W-4,cy:y,r:CR,fill:C[node.status]},g);
+    g.addEventListener('mouseenter',e=>showTip(e,node));
+    g.addEventListener('mouseleave',hideTip);
+    g.addEventListener('click',()=>showDetail(detailId,node,edges,leftNodes,rightNodes));
+  });
+
+  rightNodes.forEach((node,i)=>{
+    const xS=COL_W+MID_GAP;
+    const y=PAD_Y+12+i*ROW_H;
+    rPos[node.id]={x:xS,y};
+    const g=el('g',{cursor:'pointer'},svg);
+    const col=CL[node.status]||'#8b949e';
+    el('rect',{x:xS+12,y:y-RECT_H/2,width:COL_W-16,height:RECT_H,rx:RX,fill:C[node.status]+'1a',stroke:C[node.status],'stroke-width':'1'},g);
+    const t=el('text',{x:xS+20,y:y+4,'text-anchor':'start',fill:col,'font-size':'11'},g);
+    t.textContent=node.label.length>32?node.label.slice(0,30)+'…':node.label;
+    el('circle',{cx:xS+8,cy:y,r:CR,fill:C[node.status]},g);
+    g.addEventListener('mouseenter',e=>showTip(e,node));
+    g.addEventListener('mouseleave',hideTip);
+    g.addEventListener('click',()=>showDetail(detailId,node,edges,leftNodes,rightNodes));
+  });
+
+  // edges (drawn first, behind nodes)
+  const eg=el('g',{},svg);
+  svg.insertBefore(eg,svg.childNodes[0]);
+  edges.forEach(([lid,rid])=>{
+    const lp=lPos[lid], rp=rPos[rid];
+    if(!lp||!rp)return;
+    el('path',{
+      d:`M ${lp.x-4} ${lp.y} C ${lp.x+MID_GAP/2} ${lp.y}, ${rp.x-MID_GAP/2} ${rp.y}, ${rp.x+8} ${rp.y}`,
+      fill:'none', stroke:C.mapped+'bb', 'stroke-width':'1.5', opacity:'0.65'
+    },eg);
+  });
+}
+
+// ════════════════════════════════════════════════════════════
+// TOOLTIP & DETAIL
+// ════════════════════════════════════════════════════════════
+const tooltip = document.getElementById('tooltip');
+function showTip(e,node){
+  tooltip.innerHTML=`<strong>${node.label}</strong><span style="color:${CL[node.status]||'#c9d1d9'};font-weight:600;text-transform:capitalize">${node.status}</span><br>${node.note}`;
+  tooltip.style.display='block';
+  moveTip(e);
+}
+document.addEventListener('mousemove',moveTip);
+function moveTip(e){
+  if(tooltip.style.display==='none')return;
+  let x=e.clientX+14,y=e.clientY-10;
+  if(x+330>window.innerWidth)x=e.clientX-335;
+  tooltip.style.left=x+'px';
+  tooltip.style.top=y+'px';
+}
+function hideTip(){ tooltip.style.display='none'; }
+
+function showDetail(panelId,node,edges,leftNodes,rightNodes){
+  const p=document.getElementById(panelId);
+  const sc=CL[node.status]||'#c9d1d9';
+  const badge=`<span class="badge" style="background:${C[node.status]||'#333'}33;color:${sc};border:1px solid ${C[node.status]||'#555'}">${node.status.toUpperCase()}</span>`;
+  let conn='';
+  const isLeft=node.id.startsWith('e');
+  if(isLeft){
+    const linked=edges.filter(([l])=>l===node.id).map(([,r])=>rightNodes.find(rn=>rn.id===r)).filter(Boolean);
+    if(linked.length) conn=`<p style="margin-top:8px"><strong style="color:#8b949e">OWL element(s):</strong> ${linked.map(n=>`<code>${n.label}</code>`).join(', ')}</p>`;
+  } else {
+    const linked=edges.filter(([,r])=>r===node.id).map(([l])=>leftNodes.find(ln=>ln.id===l)).filter(Boolean);
+    if(linked.length) conn=`<p style="margin-top:8px"><strong style="color:#8b949e">Excel category:</strong> ${linked.map(n=>`<code>${n.label}</code>`).join(', ')}</p>`;
+  }
+  p.innerHTML=`<h3>${node.label}${badge}</h3><p>${node.note}</p>${conn}`;
+}
+
+// ════════════════════════════════════════════════════════════
+// TABS
+// ════════════════════════════════════════════════════════════
+function showTab(name,btn){
+  document.querySelectorAll('.tab-panel').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+  document.getElementById('tab-'+name).classList.add('active');
+  btn.classList.add('active');
+}
+
+// ════════════════════════════════════════════════════════════
+// INIT
+// ════════════════════════════════════════════════════════════
+buildStats();
+
+renderBipartite({
+  svgId:'svgClauses', leftNodes:EXCEL_CL, rightNodes:OWL_CL,
+  edges:CL_EDGES, detailId:'detailClauses'
+});
+renderBipartite({
+  svgId:'svgMeta', leftNodes:EXCEL_META, rightNodes:OWL_META,
+  edges:META_EDGES, detailId:'detailMeta'
+});
+renderBipartite({
+  svgId:'svgShacl', leftNodes:EXCEL_SHACL, rightNodes:TTL_SHAPES,
+  edges:SHACL_EDGES, detailId:'detailShacl'
+});
+</script>
+</body>
+</html>

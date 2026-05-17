@@ -1,0 +1,524 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Contract KG — CW3157888 · Acquia Reseller Agreement</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: #0d1117;
+      color: #c9d1d9;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* ── Header ─────────────────────────────────────── */
+    .header {
+      background: #161b22;
+      border-bottom: 1px solid #30363d;
+      padding: 10px 18px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-shrink: 0;
+    }
+    .header h1 { font-size: 15px; font-weight: 600; color: #58a6ff; white-space: nowrap; }
+    .chip {
+      border-radius: 20px;
+      padding: 2px 11px;
+      font-size: 11px;
+      white-space: nowrap;
+      border: 1px solid transparent;
+    }
+    .chip-blue  { background: #1e3a5f; border-color: #2a5ba8; color: #93c5fd; }
+    .chip-gray  { background: #21262d; border-color: #30363d; color: #8b949e; }
+    .chip-green { background: #0d3320; border-color: #196127; color: #3fb950; }
+    .header-spacer { flex: 1; }
+    .header-hint { font-size: 11px; color: #484f58; }
+
+    /* ── Main ───────────────────────────────────────── */
+    .main { display: flex; flex: 1; overflow: hidden; }
+
+    /* ── Graph ──────────────────────────────────────── */
+    .graph-wrap {
+      flex: 1;
+      position: relative;
+      background: radial-gradient(ellipse at 50% 50%, #111827 0%, #0d1117 70%);
+    }
+    #graph { width: 100%; height: 100%; }
+
+    /* ── Sidebar ────────────────────────────────────── */
+    .sidebar {
+      width: 340px;
+      flex-shrink: 0;
+      background: #161b22;
+      border-left: 1px solid #30363d;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .sb-head {
+      padding: 12px 14px 10px;
+      border-bottom: 1px solid #30363d;
+      background: #21262d;
+      flex-shrink: 0;
+    }
+    .sb-head .eyebrow {
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      color: #484f58;
+      margin-bottom: 3px;
+    }
+    .sb-head .sb-title { font-size: 13px; font-weight: 600; color: #e6edf3; line-height: 1.3; }
+    .type-pill {
+      display: inline-block;
+      margin-top: 6px;
+      padding: 2px 9px;
+      border-radius: 10px;
+      font-size: 10px;
+      font-weight: 500;
+    }
+
+    .stats-row {
+      display: flex;
+      border-bottom: 1px solid #30363d;
+      flex-shrink: 0;
+    }
+    .stat-cell {
+      flex: 1;
+      text-align: center;
+      padding: 7px 4px;
+      border-right: 1px solid #30363d;
+      font-size: 10px;
+      color: #484f58;
+    }
+    .stat-cell:last-child { border-right: none; }
+    .stat-cell .num { font-size: 18px; font-weight: 700; color: #58a6ff; display: block; line-height: 1.2; }
+
+    .sb-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 10px 14px 14px;
+    }
+    .sb-body::-webkit-scrollbar { width: 4px; }
+    .sb-body::-webkit-scrollbar-track { background: transparent; }
+    .sb-body::-webkit-scrollbar-thumb { background: #30363d; border-radius: 2px; }
+
+    .sb-section-title {
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      color: #484f58;
+      margin: 12px 0 6px;
+      padding-bottom: 4px;
+      border-bottom: 1px solid #21262d;
+    }
+    .meta-row {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 6px;
+      font-size: 11px;
+      line-height: 1.4;
+    }
+    .meta-key { color: #6b7280; min-width: 96px; flex-shrink: 0; }
+    .meta-val { color: #c9d1d9; word-break: break-word; }
+    .kp-item {
+      display: flex;
+      gap: 7px;
+      margin-bottom: 4px;
+      font-size: 11px;
+      line-height: 1.45;
+      color: #9ca3af;
+    }
+    .kp-item::before { content: '›'; color: #3b82f6; flex-shrink: 0; margin-top: 0px; }
+    .summary-text { font-size: 11px; color: #9ca3af; line-height: 1.65; }
+    .sb-hint {
+      flex-shrink: 0;
+      padding: 6px 14px;
+      font-size: 10px;
+      color: #374151;
+      text-align: center;
+      border-top: 1px solid #21262d;
+    }
+
+    /* ── Legend ─────────────────────────────────────── */
+    .legend {
+      background: #161b22;
+      border-top: 1px solid #30363d;
+      padding: 6px 14px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px 18px;
+      flex-shrink: 0;
+    }
+    .leg-item { display: flex; align-items: center; gap: 5px; font-size: 10px; color: #6b7280; }
+    .leg-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+
+    /* ── Tooltip ─────────────────────────────────────── */
+    #tooltip {
+      position: fixed;
+      background: #21262d;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      padding: 6px 10px;
+      font-size: 11px;
+      color: #c9d1d9;
+      pointer-events: none;
+      display: none;
+      z-index: 99;
+      max-width: 220px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+    }
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <h1>Contract Knowledge Graph</h1>
+  <span class="chip chip-blue">CW3157888</span>
+  <span class="chip chip-gray">Acquia Reseller Agreement</span>
+  <span class="chip chip-gray">IBM Japan · GBS/GBS TOP</span>
+  <span class="chip chip-green">689 triples</span>
+  <div class="header-spacer"></div>
+  <span class="header-hint">Drag nodes · Scroll to zoom · Click to inspect</span>
+</div>
+
+<div class="main">
+  <div class="graph-wrap">
+    <svg id="graph"></svg>
+  </div>
+
+  <div class="sidebar">
+    <div class="sb-head" id="sb-head">
+      <div class="eyebrow" id="sb-eyebrow">Contract</div>
+      <div class="sb-title" id="sb-title">CW3157888 — Acquia Reseller Agreement</div>
+      <span class="type-pill" id="sb-badge" style="background:#1e3a5f;color:#93c5fd;">proc:Contract</span>
+    </div>
+
+    <div class="stats-row">
+      <div class="stat-cell"><span class="num">15</span>Clauses</div>
+      <div class="stat-cell"><span class="num">152</span>Sections</div>
+      <div class="stat-cell"><span class="num">689</span>Triples</div>
+      <div class="stat-cell"><span class="num">16</span>Entities</div>
+    </div>
+
+    <div class="sb-body" id="sb-body">
+      <!-- populated by JS -->
+    </div>
+    <div class="sb-hint" id="sb-hint">Click a clause node to inspect it</div>
+  </div>
+</div>
+
+<div class="legend" id="legend"></div>
+
+<div id="tooltip"></div>
+
+<script src="https://d3js.org/d3.v7.min.js"></script>
+<script>
+// ─── Data ────────────────────────────────────────────────────────────────────
+const TYPES = {
+  GrantOfRightsClause:        { color: '#10b981', short: 'Grant of Rights' },
+  SuspensionClause:           { color: '#f59e0b', short: 'Suspension' },
+  EndCustomerAgreementClause: { color: '#3b82f6', short: 'End-Customer Agr.' },
+  AgreementClause:            { color: '#8b5cf6', short: 'Agreement' },
+  WhereasClause:              { color: '#6b7280', short: 'Whereas' },
+  DefinitionClause:           { color: '#06b6d4', short: 'Definition' },
+  ServiceProvisionClause:     { color: '#6366f1', short: 'Service Provision' },
+  IndemnityClause:            { color: '#ef4444', short: 'Indemnity' },
+  ConfidentialityClause:      { color: '#eab308', short: 'Confidentiality' },
+  AuditClause:                { color: '#a78bfa', short: 'Audit' },
+};
+
+const CLAUSES = [
+  { id:'cl_1',  label:'Grant of Rights',                type:'GrantOfRightsClause',        sec:'2.1',
+    summary:'Acquia grants Reseller non-exclusive, non-transferable rights to market, promote, and resell Acquia Subscription Services to End-Customers in the Territory, subject to Agreement terms.',
+    kp:['Non-exclusive and non-transferable rights','Marketing, promoting and reselling Acquia Subscription Services','End-Customers in the Territory','Subject to Agreement terms and conditions'] },
+
+  { id:'cl_2',  label:'Suspension of Authorization',    type:'SuspensionClause',           sec:'2.2',
+    summary:"Acquia may suspend Reseller's authorization to market and resell during any period Reseller is past due on amounts owed.",
+    kp:['Past due payments trigger suspension','Any amounts owing to Acquia','Suspension without liability'] },
+
+  { id:'cl_3',  label:'End-Customer Agr. Requirements', type:'EndCustomerAgreementClause', sec:'2.3',
+    summary:"Reseller must require End-Customers to enter End-Customer Agreements matching Acquia's End-Customer Terms. Modifications require Acquia's prior written consent.",
+    kp:['Must match End-Customer T&C','Reseller liable for inconsistencies','Prior written consent for any modifications','Modifications submitted to Acquia for review'] },
+
+  { id:'cl_4',  label:'Agreement',                      type:'AgreementClause',            sec:'sec_0',
+    summary:'Establishes the Reseller Agreement between Acquia Inc. (Delaware) and the Reseller. Defines effective date and principal places of business.',
+    kp:['Acquia Inc. — Delaware corp, Boston MA','Effective Date = date last signed','Identifies Reseller principal place of business'] },
+
+  { id:'cl_5',  label:'Whereas — Acquia Business',      type:'WhereasClause',              sec:'sec_1',
+    summary:'Recital stating Acquia is engaged in providing a PaaS cloud environment for digital experience development including multi-site management, CI/CD, analytics and professional services.',
+    kp:['PaaS cloud environment','Digital experience development and delivery','Multi-site management, CI/CD tools','Support and professional services'] },
+
+  { id:'cl_6',  label:'Whereas — Reseller Business',    type:'WhereasClause',              sec:'sec_2',
+    summary:"Recital stating the Reseller is engaged in a specific business (field left blank in this template).",
+    kp:['Reseller business description (blank in template)'] },
+
+  { id:'cl_7',  label:'Whereas — Partnership Intent',   type:'WhereasClause',              sec:'sec_3',
+    summary:'Mutual desire for Reseller and Reseller Affiliates to offer and resell Acquia Subscription Services to End-Customers on a non-exclusive basis.',
+    kp:['Non-exclusive resale arrangement','Reseller and Reseller Affiliates in scope','End-Customers as target market'] },
+
+  { id:'cl_8',  label:'Definition: Subscription Svcs',  type:'DefinitionClause',           sec:'sec_66',
+    summary:"Defines 'Subscription Services' as the cloud platform and software made available by Acquia to Customer online, as ordered under a Purchase Order.",
+    kp:['Cloud platform made available by Acquia','Software via customer login credentials','Ordered under a Purchase Order'] },
+
+  { id:'cl_9',  label:'Definition: Support Services',   type:'DefinitionClause',           sec:'sec_67',
+    summary:"Defines 'Support Services' as the level of support services purchased by Customer pursuant to a Purchase Order.",
+    kp:['Level of support purchased by Customer','Specified in a Purchase Order'] },
+
+  { id:'cl_10', label:'Definition: Subscription Term',  type:'DefinitionClause',           sec:'sec_68',
+    summary:"Defines 'Subscription Term' as the duration commencing on the start date in the Purchase Order, continuing for the specified term and any renewals.",
+    kp:['Starts on date in Purchase Order','Continues for specified subscription term','Includes any renewals'] },
+
+  { id:'cl_11', label:'Provision of Services',          type:'ServiceProvisionClause',     sec:'sec_69',
+    summary:"Acquia makes Subscription Services available per End-Customer Agreement for Customer's internal use. Reseller is responsible for order accuracy. Acquia may use Affiliates/Contractors.",
+    kp:['Internal business purposes only','Reseller responsible for order accuracy','Acquia may use Affiliates and Contractors','Full functionality access during Subscription Term'] },
+
+  { id:'cl_12', label:'Indemnification by Acquia',      type:'IndemnityClause',            sec:'10.1',
+    summary:'Acquia indemnifies Customer against third-party IP infringement claims for the Subscription Services. Acquia controls defense. Exclusions include Customer Data and Customer Applications.',
+    kp:['Acquia indemnifies for IP infringement claims','Acquia controls defense and settlement','Customer must provide prompt written notice','Exclusions: Customer Data, Customer Apps, breach'] },
+
+  { id:'cl_13', label:'Indemnification by Customer',    type:'IndemnityClause',            sec:'10.2',
+    summary:'Customer indemnifies Acquia against third-party claims that Customer Data or Customer Applications violate applicable law or third-party rights.',
+    kp:['Customer indemnifies Acquia','Claims related to Customer Data or Applications','Acquia must notify Customer promptly','Customer controls defense and settlement'] },
+
+  { id:'cl_14', label:'Confidentiality Agreement',      type:'ConfidentialityClause',      sec:'sec_147',
+    summary:'Confirms pre-existing NDA (PAECI #4916001531) between IBM Japan and Acquia. All agreements—reseller and direct—include further confidentiality clauses.',
+    kp:['Existing PAECI (NDA) #4916001531','Between IBM Japan and Acquia','All agreements include confidentiality clauses','Applies to reseller and direct agreements'] },
+
+  { id:'cl_15', label:'Audit Rights',                   type:'AuditClause',                sec:'sec_148',
+    summary:'Outlines audit rights requiring access to books, records, documents and premises. Digital documentation may substitute on-site access. Includes end-customer agreements for Acquia products.',
+    kp:['Access to premises unless docs provided digitally','All books, records, documents and evidence','Includes end-customer agreements for Acquia products','7 business days advance notice required'] },
+];
+
+const CONTRACT_META_HTML = `
+  <div class="sb-section-title">Metadata</div>
+  <div class="meta-row"><span class="meta-key">Agreement Type</span><span class="meta-val">P_SRA — Supplier Relationship Agreement (eSign tag)</span></div>
+  <div class="meta-row"><span class="meta-key">Business Unit</span><span class="meta-val">GBS/GBS TOP</span></div>
+  <div class="meta-row"><span class="meta-key">Effective Date</span><span class="meta-val">4/22/2021</span></div>
+  <div class="meta-row"><span class="meta-key">Status</span><span class="meta-val">Gray</span></div>
+  <div class="meta-row"><span class="meta-key">Project Name</span><span class="meta-val">Reseller Agreement</span></div>
+  <div class="meta-row"><span class="meta-key">Parent Contract</span><span class="meta-val">null (standalone)</span></div>
+  <div class="sb-section-title">Parties</div>
+  <div class="meta-row"><span class="meta-key">Supplier</span><span class="meta-val">Acquia Inc</span></div>
+  <div class="meta-row"><span class="meta-key">Supplier ID</span><span class="meta-val">1000437359</span></div>
+  <div class="meta-row"><span class="meta-key">Owner</span><span class="meta-val">Even Jiang</span></div>
+  <div class="meta-row"><span class="meta-key">Owner ID</span><span class="meta-val">EB69639@jp.ibm.com</span></div>
+  <div class="sb-section-title">Document</div>
+  <div class="meta-row"><span class="meta-key">Contract ID</span><span class="meta-val">CW3157888</span></div>
+  <div class="meta-row"><span class="meta-key">Document ID</span><span class="meta-val">Doc2951835538</span></div>
+  <div class="meta-row"><span class="meta-key">File</span><span class="meta-val">files/Doc2951835538.docx</span></div>
+  <div class="meta-row"><span class="meta-key">RDF Triples</span><span class="meta-val">689</span></div>
+  <div class="meta-row"><span class="meta-key">Clauses</span><span class="meta-val">15 extracted</span></div>
+  <div class="meta-row"><span class="meta-key">Sections</span><span class="meta-val">152 parsed</span></div>
+`;
+
+// ─── Build legend ─────────────────────────────────────────────────────────────
+const seenTypes = [...new Set(CLAUSES.map(c => c.type))];
+const legendEl = document.getElementById('legend');
+seenTypes.forEach(t => {
+  const info = TYPES[t] || { color:'#888', short: t };
+  legendEl.innerHTML += `<div class="leg-item"><div class="leg-dot" style="background:${info.color}"></div>${info.short}</div>`;
+});
+
+// ─── Sidebar helpers ──────────────────────────────────────────────────────────
+function showContract() {
+  document.getElementById('sb-eyebrow').textContent = 'Contract';
+  document.getElementById('sb-title').textContent   = 'CW3157888 — Acquia Reseller Agreement';
+  const badge = document.getElementById('sb-badge');
+  badge.style.cssText = 'background:#1e3a5f;color:#93c5fd;';
+  badge.textContent   = 'proc:Contract';
+  document.getElementById('sb-body').innerHTML = CONTRACT_META_HTML;
+  document.getElementById('sb-hint').textContent = 'Click a clause node to inspect it';
+}
+
+function showClause(c) {
+  const info = TYPES[c.type] || { color:'#888' };
+  document.getElementById('sb-eyebrow').textContent = `Clause · §${c.sec}`;
+  document.getElementById('sb-title').textContent   = c.label;
+  const badge = document.getElementById('sb-badge');
+  badge.style.cssText = `background:${info.color}22;color:${info.color};border:1px solid ${info.color}55;`;
+  badge.textContent = c.type;
+
+  let html = `<div class="sb-section-title">Summary</div>
+    <div class="summary-text">${c.summary}</div>`;
+
+  if (c.kp && c.kp.length) {
+    html += `<div class="sb-section-title">Key Points</div>`;
+    c.kp.forEach(k => { html += `<div class="kp-item">${k}</div>`; });
+  }
+
+  html += `<div class="sb-section-title">Identifiers</div>
+    <div class="meta-row"><span class="meta-key">Clause URI</span><span class="meta-val">contract:${c.id}</span></div>
+    <div class="meta-row"><span class="meta-key">Section</span><span class="meta-val">${c.sec}</span></div>
+    <div class="meta-row"><span class="meta-key">RDF Type</span><span class="meta-val">proc:Clause · proc:${c.type}</span></div>`;
+
+  document.getElementById('sb-body').innerHTML = html;
+  document.getElementById('sb-hint').textContent = '← Click contract node to return to metadata';
+}
+
+// ─── D3 Graph ─────────────────────────────────────────────────────────────────
+const svg  = d3.select('#graph');
+const wrap = document.querySelector('.graph-wrap');
+let W = wrap.clientWidth, H = wrap.clientHeight;
+svg.attr('width', W).attr('height', H);
+
+const defs = svg.append('defs');
+// glow filter
+const filt = defs.append('filter').attr('id','glow').attr('x','-50%').attr('y','-50%').attr('width','200%').attr('height','200%');
+filt.append('feGaussianBlur').attr('stdDeviation','4').attr('result','blur');
+const feMerge = filt.append('feMerge');
+feMerge.append('feMergeNode').attr('in','blur');
+feMerge.append('feMergeNode').attr('in','SourceGraphic');
+
+const root = svg.append('g').attr('class','root');
+
+// Zoom
+svg.call(d3.zoom().scaleExtent([0.25, 4])
+  .on('zoom', e => root.attr('transform', e.transform)));
+
+// Nodes & links data
+const CONTRACT_NODE = { id:'CONTRACT', label:'CW3157888', sub:'Contract', r:42, contract:true };
+const nodeData = [
+  CONTRACT_NODE,
+  ...CLAUSES.map(c => ({ id:c.id, label:c.label, sub:c.type.replace('Clause',''), type:c.type, clause:c, r:24 }))
+];
+const linkData = CLAUSES.map(c => ({ source:'CONTRACT', target:c.id }));
+
+// Pre-position clause nodes in a circle
+const RING_R = Math.min(W, H) * 0.38;
+CLAUSES.forEach((c, i) => {
+  const n = nodeData.find(n => n.id === c.id);
+  const angle = (2 * Math.PI * i / CLAUSES.length) - Math.PI / 2;
+  n.x = W / 2 + RING_R * Math.cos(angle);
+  n.y = H / 2 + RING_R * Math.sin(angle);
+});
+CONTRACT_NODE.x = W / 2;
+CONTRACT_NODE.y = H / 2;
+CONTRACT_NODE.fx = W / 2;
+CONTRACT_NODE.fy = H / 2;
+
+// Simulation
+const sim = d3.forceSimulation(nodeData)
+  .force('link', d3.forceLink(linkData).id(d => d.id).distance(RING_R).strength(0.08))
+  .force('charge', d3.forceManyBody().strength(-280))
+  .force('collision', d3.forceCollide().radius(d => d.r + 28).strength(0.9))
+  .force('center', d3.forceCenter(W / 2, H / 2).strength(0.05));
+
+// Links
+const linkSel = root.append('g').selectAll('line').data(linkData).join('line')
+  .attr('stroke', '#30363d')
+  .attr('stroke-width', 1.2)
+  .attr('stroke-opacity', 0.5);
+
+// Nodes
+const nodeSel = root.append('g').selectAll('g').data(nodeData).join('g')
+  .style('cursor','pointer')
+  .call(d3.drag()
+    .on('start', (e, d) => { if (!e.active) sim.alphaTarget(0.3).restart(); d.fx=d.x; d.fy=d.y; })
+    .on('drag',  (e, d) => { d.fx=e.x; d.fy=e.y; })
+    .on('end',   (e, d) => { if (!e.active) sim.alphaTarget(0); if (!d.contract) { d.fx=null; d.fy=null; } }))
+  .on('mouseenter', (e, d) => {
+    const tip = document.getElementById('tooltip');
+    tip.style.display = 'block';
+    tip.innerHTML = d.contract
+      ? '<strong>contract:CW3157888</strong><br>proc:Contract · 15 hasClause'
+      : `<strong>contract:${d.id}</strong><br>${d.type}<br>§${d.clause?.sec}`;
+  })
+  .on('mousemove', e => {
+    const tip = document.getElementById('tooltip');
+    tip.style.left = (e.clientX + 14) + 'px';
+    tip.style.top  = (e.clientY - 10) + 'px';
+  })
+  .on('mouseleave', () => { document.getElementById('tooltip').style.display = 'none'; })
+  .on('click', (e, d) => {
+    e.stopPropagation();
+    if (d.contract) { showContract(); }
+    else            { showClause(d.clause); }
+    // highlight selection
+    nodeSel.selectAll('circle.outer')
+      .attr('stroke-width', nd => nd.id === d.id ? 3 : 1.5)
+      .attr('filter', nd => nd.id === d.id ? 'url(#glow)' : null);
+  });
+
+// Outer circle
+nodeSel.append('circle').attr('class','outer')
+  .attr('r', d => d.r)
+  .attr('fill', d => d.contract ? '#0f2a4a' : (TYPES[d.type]?.color + '1a' || '#88888818'))
+  .attr('stroke', d => d.contract ? '#3b82f6' : (TYPES[d.type]?.color || '#888'))
+  .attr('stroke-width', 1.5);
+
+// Inner pulse for contract node
+nodeSel.filter(d => d.contract).append('circle')
+  .attr('r', 28)
+  .attr('fill', 'none')
+  .attr('stroke', '#3b82f6')
+  .attr('stroke-width', 0.5)
+  .attr('stroke-opacity', 0.4);
+
+// Contract label (inside)
+nodeSel.filter(d => d.contract).append('text')
+  .attr('text-anchor','middle').attr('dy','-0.25em')
+  .attr('font-size','13px').attr('font-weight','700').attr('fill','#93c5fd')
+  .text('CW3157888');
+nodeSel.filter(d => d.contract).append('text')
+  .attr('text-anchor','middle').attr('dy','1em')
+  .attr('font-size','9px').attr('fill','#4b83bf')
+  .text('proc:Contract');
+
+// Clause node — short type label inside circle
+nodeSel.filter(d => !d.contract).append('text')
+  .attr('text-anchor','middle').attr('dy','0.35em')
+  .attr('font-size','8px').attr('font-weight','600')
+  .attr('fill', d => TYPES[d.type]?.color || '#aaa')
+  .attr('pointer-events','none')
+  .text(d => {
+    const s = (TYPES[d.type]?.short || d.sub).replace(' Agr.','').substring(0,8);
+    return s;
+  });
+
+// Clause label below node
+nodeSel.filter(d => !d.contract).append('text')
+  .attr('text-anchor','middle')
+  .attr('dy', d => (d.r + 13) + 'px')
+  .attr('font-size','9.5px').attr('fill','#8b949e').attr('pointer-events','none')
+  .text(d => d.label.length > 20 ? d.label.substring(0,19)+'…' : d.label);
+
+// Clause id below label
+nodeSel.filter(d => !d.contract).append('text')
+  .attr('text-anchor','middle')
+  .attr('dy', d => (d.r + 23) + 'px')
+  .attr('font-size','8px').attr('fill','#484f58').attr('pointer-events','none')
+  .text(d => d.id);
+
+// Tick
+sim.on('tick', () => {
+  linkSel
+    .attr('x1', d => d.source.x).attr('y1', d => d.source.y)
+    .attr('x2', d => d.target.x).attr('y2', d => d.target.y);
+  nodeSel.attr('transform', d => `translate(${d.x},${d.y})`);
+});
+
+// Click on background → show contract
+svg.on('click', () => { showContract(); nodeSel.selectAll('circle.outer').attr('stroke-width',1.5).attr('filter',null); });
+
+// Init sidebar
+showContract();
+
+// Resize
+window.addEventListener('resize', () => {
+  W = wrap.clientWidth; H = wrap.clientHeight;
+  svg.attr('width', W).attr('height', H);
+  CONTRACT_NODE.fx = W / 2;
+  CONTRACT_NODE.fy = H / 2;
+  sim.force('center', d3.forceCenter(W / 2, H / 2).strength(0.05));
+  sim.alpha(0.3).restart();
+});
+</script>
+</body>
+</html>
