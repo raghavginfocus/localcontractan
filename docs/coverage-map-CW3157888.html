@@ -1,0 +1,548 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CW3157888 — Excel ↔ RDF Coverage Map</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    background: #0d1117;
+    color: #c9d1d9;
+    min-height: 100vh;
+  }
+
+  header {
+    background: linear-gradient(135deg, #161b22 0%, #1c2333 100%);
+    border-bottom: 1px solid #30363d;
+    padding: 20px 32px;
+  }
+  header h1 { font-size: 1.4rem; font-weight: 700; color: #e6edf3; }
+  header p  { font-size: 0.82rem; color: #8b949e; margin-top: 4px; }
+
+  /* ── stats strip ── */
+  .stats-strip {
+    display: flex; gap: 12px; flex-wrap: wrap;
+    padding: 16px 32px;
+    background: #161b22;
+    border-bottom: 1px solid #21262d;
+  }
+  .stat-pill {
+    display: flex; align-items: center; gap: 8px;
+    background: #0d1117;
+    border: 1px solid #30363d;
+    border-radius: 20px;
+    padding: 6px 14px;
+    font-size: 0.78rem;
+  }
+  .stat-pill .dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+  .stat-pill strong { color: #e6edf3; font-size: 1rem; margin-left: 4px; }
+
+  /* ── tabs ── */
+  .tabs {
+    display: flex; gap: 0;
+    padding: 0 32px;
+    background: #161b22;
+    border-bottom: 1px solid #21262d;
+  }
+  .tab-btn {
+    padding: 12px 24px;
+    cursor: pointer;
+    background: none;
+    border: none;
+    border-bottom: 3px solid transparent;
+    color: #8b949e;
+    font-size: 0.88rem;
+    font-weight: 600;
+    transition: all .2s;
+  }
+  .tab-btn.active { color: #58a6ff; border-bottom-color: #58a6ff; }
+  .tab-btn:hover:not(.active) { color: #c9d1d9; }
+
+  /* ── legend ── */
+  .legend {
+    display: flex; flex-wrap: wrap; gap: 10px;
+    padding: 14px 32px;
+    background: #0d1117;
+    border-bottom: 1px solid #21262d;
+    font-size: 0.76rem;
+  }
+  .legend-item { display: flex; align-items: center; gap: 6px; }
+  .legend-swatch { width: 12px; height: 12px; border-radius: 3px; }
+
+  /* ── main bipartite area ── */
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+
+  .bipartite-wrapper {
+    padding: 24px 32px;
+    overflow-x: auto;
+  }
+
+  svg.bipartite {
+    width: 100%;
+    font-size: 12px;
+  }
+
+  /* ── tooltip ── */
+  .tooltip {
+    position: fixed;
+    background: #161b22;
+    border: 1px solid #58a6ff;
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-size: 0.78rem;
+    color: #c9d1d9;
+    pointer-events: none;
+    z-index: 999;
+    max-width: 300px;
+    line-height: 1.5;
+    display: none;
+    box-shadow: 0 8px 24px rgba(0,0,0,.5);
+  }
+  .tooltip strong { color: #e6edf3; display: block; margin-bottom: 4px; }
+
+  /* ── detail panel ── */
+  .detail-panel {
+    margin: 0 32px 24px;
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 8px;
+    padding: 16px;
+    font-size: 0.82rem;
+    min-height: 64px;
+    color: #8b949e;
+  }
+  .detail-panel h3 { color: #e6edf3; font-size: 0.9rem; margin-bottom: 8px; }
+  .detail-panel .badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    margin-left: 8px;
+    vertical-align: middle;
+  }
+  .detail-panel p { margin-top: 4px; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Contract CW3157888 — Excel Specification ↔ RDF Coverage Map</h1>
+  <p>IBM / Acquia Reseller Agreement &nbsp;·&nbsp; Comparing extracted RDF triples against Types_of_Details_Extracted_from_Contracts.xlsx &amp; Contracts__Data_Dictionary.xlsx</p>
+</header>
+
+<!-- stats strip -->
+<div class="stats-strip" id="statsStrip">
+  <!-- filled by JS -->
+</div>
+
+<!-- tabs -->
+<div class="tabs">
+  <button class="tab-btn active" onclick="showTab('clauses', this)">Clause Coverage</button>
+  <button class="tab-btn" onclick="showTab('metadata', this)">Metadata Coverage</button>
+</div>
+
+<!-- legend -->
+<div class="legend">
+  <div class="legend-item"><div class="legend-swatch" style="background:#238636"></div>Covered — direct RDF clause</div>
+  <div class="legend-item"><div class="legend-swatch" style="background:#9e6a03"></div>Partial — found in document sections, not extracted as named clause</div>
+  <div class="legend-item"><div class="legend-swatch" style="background:#da3633"></div>Missing — not present in this contract's RDF</div>
+  <div class="legend-item"><div class="legend-swatch" style="background:#6e40c9"></div>Extra — in RDF but not in Excel specification</div>
+</div>
+
+<!-- CLAUSE TAB -->
+<div id="tab-clauses" class="tab-panel active">
+  <div class="bipartite-wrapper">
+    <svg id="svgClauses" class="bipartite"></svg>
+  </div>
+  <div class="detail-panel" id="detailClauses">
+    <span style="color:#8b949e">Hover or click a node to see details about the mapping.</span>
+  </div>
+</div>
+
+<!-- METADATA TAB -->
+<div id="tab-metadata" class="tab-panel">
+  <div class="bipartite-wrapper">
+    <svg id="svgMeta" class="bipartite"></svg>
+  </div>
+  <div class="detail-panel" id="detailMeta">
+    <span style="color:#8b949e">Hover or click a node to see details about the mapping.</span>
+  </div>
+</div>
+
+<div class="tooltip" id="tooltip"></div>
+
+<script>
+// ============================================================
+// DATA
+// ============================================================
+
+// STATUS COLORS
+const COLOR = {
+  covered:  '#238636',
+  partial:  '#9e6a03',
+  missing:  '#da3633',
+  extra:    '#6e40c9',
+};
+const COLOR_LIGHT = {
+  covered:  '#2ea043',
+  partial:  '#d29922',
+  missing:  '#f85149',
+  extra:    '#a371f7',
+};
+
+// ── CLAUSE MAPPING ───────────────────────────────────────────
+// left  = Excel spec categories
+// right = RDF extracted clause IDs
+
+const EXCEL_CLAUSES = [
+  { id:'e_audit',     label:'Audit / Right to Audit',         status:'covered',  note:'Mapped to cl_15 AuditClause' },
+  { id:'e_conf',      label:'Confidentiality',                status:'covered',  note:'Mapped to cl_14 ConfidentialityClause' },
+  { id:'e_indem',     label:'Indemnification',                status:'covered',  note:'Mapped to cl_12 + cl_13 IndemnityClause' },
+  { id:'e_reckeep',   label:'Record Keeping & Audit',         status:'covered',  note:'Overlaps with cl_15 AuditClause' },
+  { id:'e_bestprc',   label:'Best Possible Pricing',          status:'partial',  note:'Appears in section sec_22 but not as a named RDF clause' },
+  { id:'e_earlyterm', label:'Early Termination',              status:'partial',  note:'Referenced in sec_30; EarlyTerminationClause type exists in ontology but not extracted' },
+  { id:'e_ip',        label:'Intellectual Property',          status:'partial',  note:'Present in sec_26 "Ownership of Deliverables"; not extracted as IntellectualPropertyClause' },
+  { id:'e_liab',      label:'Liability',                      status:'partial',  note:'Mentioned in sec_35; no explicit LiabilityClause triple' },
+  { id:'e_report',    label:'Reporting Requirements',         status:'partial',  note:'Alluded to in sec_24; no ReportingRequirementsClause extracted' },
+  { id:'e_sub',       label:'Subcontractors',                 status:'partial',  note:'Partially covered by cl_11 ServiceProvisionClause' },
+  { id:'e_renew',     label:'Renewal',                        status:'partial',  note:'Referenced in sec_25 renewal language' },
+  { id:'e_termconv',  label:'Termination For Convenience',    status:'partial',  note:'Within sec_25; TerminationClause not extracted as standalone' },
+  { id:'e_chgctrl',   label:'Change Controls',                status:'partial',  note:'Referenced in sec_21 but ContractchangeClause not extracted' },
+  { id:'e_sspa',      label:'SSPA',                           status:'missing',  note:'SSPAClause type exists in ontology, but no SSPA clause found in this contract' },
+  { id:'e_accept',    label:'Acceptance Criteria',            status:'missing',  note:'AcceptanceCriteriaClause: not in this contract' },
+  { id:'e_arb',       label:'Arbitration',                    status:'missing',  note:'ArbitrationClause: not extracted' },
+  { id:'e_bench',     label:'Benchmarking / Quality',         status:'missing',  note:'BenchmarkTestingClause: not in this contract' },
+  { id:'e_assign',    label:'Assignment',                     status:'missing',  note:'AssignmentClause: not in this contract' },
+  { id:'e_bcp',       label:'Business Continuity Plan',       status:'missing',  note:'BusinessContinuityClause: not extracted' },
+  { id:'e_dprivacy',  label:'Data Privacy',                   status:'missing',  note:'DataPrivacyProtectionClause: not found' },
+  { id:'e_dprotect',  label:'Data Protection',                status:'missing',  note:'No data protection clause extracted' },
+  { id:'e_dispute',   label:'Dispute Resolution',             status:'missing',  note:'DisputeResolutionClause: not in this contract' },
+  { id:'e_force',     label:'Force Majeure',                  status:'missing',  note:'ForceMajeureClause: not extracted' },
+  { id:'e_govlaw',    label:'Governing Law',                  status:'missing',  note:'GoverningLawClause: not extracted' },
+  { id:'e_insure',    label:'Insurance',                      status:'missing',  note:'InsuranceClause: not in this contract' },
+  { id:'e_location',  label:'Location',                       status:'missing',  note:'LocationClause: not extracted' },
+  { id:'e_ibmname',   label:'IBM Name / Likeness',            status:'missing',  note:'PermissionOfUsingIbmNameLikenessClause: not present' },
+  { id:'e_prodwarr',  label:'Product Warranty',               status:'missing',  note:'ProductWarrantyClause: not extracted' },
+  { id:'e_sra',       label:'SRA Inclusion Text',             status:'missing',  note:'SraInclusionTextClause: not in this contract' },
+  { id:'e_suppers',   label:'Supplier & Personnel',           status:'missing',  note:'SupplierAndPersonnelClause: not extracted' },
+];
+
+const RDF_CLAUSES = [
+  { id:'r_grant',   label:'cl_1 GrantOfRightsClause',        status:'extra',    note:'Grants reseller rights — not in Excel spec' },
+  { id:'r_susp',    label:'cl_2 SuspensionClause',            status:'extra',    note:'IBM right to suspend — not in Excel spec' },
+  { id:'r_endcust', label:'cl_3 EndCustomerAgreementClause',  status:'extra',    note:'End-customer agreement obligations — not in Excel spec' },
+  { id:'r_agrmnt',  label:'cl_4 AgreementClause',             status:'extra',    note:'General agreement terms — not in Excel spec' },
+  { id:'r_whrs1',   label:'cl_5 WhereasClause',               status:'extra',    note:'Recital / whereas preamble — not in Excel spec' },
+  { id:'r_whrs2',   label:'cl_6 WhereasClause',               status:'extra',    note:'Recital / whereas preamble — not in Excel spec' },
+  { id:'r_whrs3',   label:'cl_7 WhereasClause',               status:'extra',    note:'Recital / whereas preamble — not in Excel spec' },
+  { id:'r_def1',    label:'cl_8 DefinitionClause',            status:'extra',    note:'Definitions — not in Excel spec' },
+  { id:'r_def2',    label:'cl_9 DefinitionClause',            status:'extra',    note:'Definitions — not in Excel spec' },
+  { id:'r_def3',    label:'cl_10 DefinitionClause',           status:'extra',    note:'Definitions — not in Excel spec' },
+  { id:'r_svc',     label:'cl_11 ServiceProvisionClause',     status:'extra',    note:'Partial match to Subcontractors; mostly extra' },
+  { id:'r_ind1',    label:'cl_12 IndemnityClause',            status:'covered',  note:'Maps to Excel: Indemnification' },
+  { id:'r_ind2',    label:'cl_13 IndemnityClause',            status:'covered',  note:'Maps to Excel: Indemnification' },
+  { id:'r_conf',    label:'cl_14 ConfidentialityClause',      status:'covered',  note:'Maps to Excel: Confidentiality' },
+  { id:'r_audit',   label:'cl_15 AuditClause',               status:'covered',  note:'Maps to Excel: Audit / Right to Audit + Record Keeping' },
+];
+
+// edges: [excel_id, rdf_id]
+const CLAUSE_EDGES = [
+  ['e_audit',   'r_audit'],
+  ['e_reckeep', 'r_audit'],
+  ['e_conf',    'r_conf'],
+  ['e_indem',   'r_ind1'],
+  ['e_indem',   'r_ind2'],
+  ['e_sub',     'r_svc'],
+];
+
+// ── METADATA MAPPING ─────────────────────────────────────────
+
+const EXCEL_META = [
+  { id:'m_contid',   label:'Contract ID',          status:'covered', note:'proc:contractId = "CW3157888"' },
+  { id:'m_proj',     label:'Project Name',          status:'covered', note:'proc:projectName present' },
+  { id:'m_agtype',   label:'Agreement Type',        status:'covered', note:'proc:agreementType = "Reseller Agreement"' },
+  { id:'m_buunit',   label:'Business Unit',         status:'covered', note:'proc:businessUnit = "IBM Technology"' },
+  { id:'m_effdate',  label:'Effective Date',        status:'covered', note:'proc:effectiveDate = 2019-07-01' },
+  { id:'m_supp',     label:'Supplier Name / ID',    status:'covered', note:'proc:supplierName + proc:supplierId present' },
+  { id:'m_parent',   label:'Parent Contract ID',    status:'covered', note:'proc:parentContractId referenced' },
+  { id:'m_owners',   label:'Signatories / Owners',  status:'partial', note:'proc:contractOwner extracted; not all signatories identified' },
+  { id:'m_contval',  label:'Contract Value',        status:'missing', note:'proc:contractValue not present in this RDF output' },
+  { id:'m_expdate',  label:'Expiration Date',       status:'missing', note:'proc:expirationDate not extracted' },
+  { id:'m_amend',    label:'Amendment Name',        status:'missing', note:'proc:amendmentName not set' },
+  { id:'m_firm',     label:'Firm Commitments',      status:'missing', note:'No property in ontology for firm commitments' },
+  { id:'m_unspsc',   label:'UNSPSC Code',           status:'missing', note:'Not in ontology or extracted data' },
+];
+
+const RDF_META = [
+  { id:'rm_contid',  label:'proc:contractId',       status:'covered', note:'= "CW3157888"' },
+  { id:'rm_proj',    label:'proc:projectName',      status:'covered', note:'= "Acquia Reseller Agreement"' },
+  { id:'rm_agtype',  label:'proc:agreementType',    status:'covered', note:'= "Reseller Agreement"' },
+  { id:'rm_buunit',  label:'proc:businessUnit',     status:'covered', note:'= "IBM Technology"' },
+  { id:'rm_effdate', label:'proc:effectiveDate',    status:'covered', note:'= 2019-07-01' },
+  { id:'rm_suppnm',  label:'proc:supplierName',     status:'covered', note:'= "Acquia"' },
+  { id:'rm_suppid',  label:'proc:supplierId',       status:'covered', note:'present' },
+  { id:'rm_parid',   label:'proc:parentContractId', status:'covered', note:'referenced' },
+  { id:'rm_owner',   label:'proc:contractOwner',    status:'partial', note:'Partial match to Signatories' },
+  { id:'rm_ownerid', label:'proc:ownerId',          status:'extra',   note:'Internal owner ID — not in Excel spec' },
+  { id:'rm_ownernm', label:'proc:ownerName',        status:'extra',   note:'Owner display name — not in Excel spec' },
+  { id:'rm_status',  label:'proc:status',           status:'extra',   note:'Contract lifecycle status — not in Excel spec' },
+  { id:'rm_docid',   label:'proc:documentId',       status:'extra',   note:'Internal document ID — not in Excel spec' },
+  { id:'rm_docpath', label:'proc:documentPath',     status:'extra',   note:'File system path — not in Excel spec' },
+  { id:'rm_doctype', label:'proc:documentType',     status:'extra',   note:'Document type flag — not in Excel spec' },
+];
+
+const META_EDGES = [
+  ['m_contid',  'rm_contid'],
+  ['m_proj',    'rm_proj'],
+  ['m_agtype',  'rm_agtype'],
+  ['m_buunit',  'rm_buunit'],
+  ['m_effdate', 'rm_effdate'],
+  ['m_supp',    'rm_suppnm'],
+  ['m_supp',    'rm_suppid'],
+  ['m_parent',  'rm_parid'],
+  ['m_owners',  'rm_owner'],
+];
+
+// ============================================================
+// STATS
+// ============================================================
+function buildStats() {
+  const cx = EXCEL_CLAUSES.filter(d=>d.status==='covered').length;
+  const px = EXCEL_CLAUSES.filter(d=>d.status==='partial').length;
+  const mx = EXCEL_CLAUSES.filter(d=>d.status==='missing').length;
+  const ex = RDF_CLAUSES.filter(d=>d.status==='extra').length;
+
+  const cm = EXCEL_META.filter(d=>d.status==='covered').length;
+  const pm = EXCEL_META.filter(d=>d.status==='partial').length;
+  const mm = EXCEL_META.filter(d=>d.status==='missing').length;
+  const em = RDF_META.filter(d=>d.status==='extra').length;
+
+  const clausePct = Math.round(100*cx/EXCEL_CLAUSES.length);
+  const metaPct   = Math.round(100*cm/EXCEL_META.length);
+
+  document.getElementById('statsStrip').innerHTML = `
+    <div class="stat-pill"><div class="dot" style="background:${COLOR.covered}"></div>Clause coverage (direct)<strong>${clausePct}%</strong>&nbsp;(${cx}/${EXCEL_CLAUSES.length})</div>
+    <div class="stat-pill"><div class="dot" style="background:${COLOR.partial}"></div>Clause partial<strong>${px}</strong></div>
+    <div class="stat-pill"><div class="dot" style="background:${COLOR.missing}"></div>Clause missing<strong>${mx}</strong></div>
+    <div class="stat-pill"><div class="dot" style="background:${COLOR.extra}"></div>Extra RDF clauses<strong>${ex}</strong></div>
+    <div class="stat-pill" style="border-color:#58a6ff"><div class="dot" style="background:${COLOR.covered}"></div>Metadata coverage<strong>${metaPct}%</strong>&nbsp;(${cm}/${EXCEL_META.length})</div>
+    <div class="stat-pill"><div class="dot" style="background:${COLOR.partial}"></div>Meta partial<strong>${pm}</strong></div>
+    <div class="stat-pill"><div class="dot" style="background:${COLOR.missing}"></div>Meta missing<strong>${mm}</strong></div>
+    <div class="stat-pill"><div class="dot" style="background:${COLOR.extra}"></div>Extra RDF meta props<strong>${em}</strong></div>
+  `;
+}
+
+// ============================================================
+// BIPARTITE RENDERER
+// ============================================================
+function renderBipartite({ svgId, leftNodes, rightNodes, edges, detailId, title }) {
+  const ROW_H   = 32;
+  const PAD_Y   = 24;
+  const COL_W   = 260;
+  const MID_GAP = 220;
+  const NODE_R  = 7;
+  const RECT_H  = 24;
+  const RECT_RX = 5;
+
+  const lCount = leftNodes.length;
+  const rCount = rightNodes.length;
+  const rows   = Math.max(lCount, rCount);
+  const H      = rows * ROW_H + PAD_Y * 2;
+  const W      = COL_W * 2 + MID_GAP + 40;
+
+  const svg = document.getElementById(svgId);
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  svg.setAttribute('height', H);
+  svg.innerHTML = '';
+
+  const ns = 'http://www.w3.org/2000/svg';
+
+  function el(tag, attrs, parent) {
+    const e = document.createElementNS(ns, tag);
+    for (const [k,v] of Object.entries(attrs)) e.setAttribute(k, v);
+    if (parent) parent.appendChild(e);
+    return e;
+  }
+
+  // defs — glow filter
+  const defs = el('defs', {}, svg);
+  const filt = el('filter', {id:'glow', x:'-30%', y:'-30%', width:'160%', height:'160%'}, defs);
+  const blur = el('feGaussianBlur', {stdDeviation:'3', result:'blur'}, filt);
+  const merge = el('feMerge', {}, filt);
+  el('feMergeNode', {in:'blur'}, merge);
+  el('feMergeNode', {in:'SourceGraphic'}, merge);
+
+  // column headers
+  el('text', {x: COL_W/2, y:16, 'text-anchor':'middle', fill:'#8b949e', 'font-size':'11', 'font-weight':'600'}, svg).textContent = '← Excel Specification';
+  el('text', {x: COL_W + MID_GAP + COL_W/2, y:16, 'text-anchor':'middle', fill:'8b949e', 'font-size':'11', 'font-weight':'600'}, svg).textContent = 'RDF Extracted →';
+  el('text', {x: COL_W + MID_GAP + COL_W/2, y:16, 'text-anchor':'middle', fill:'#8b949e', 'font-size':'11', 'font-weight':'600'}, svg).textContent = 'RDF Extracted →';
+
+  // position maps
+  const lPos = {}, rPos = {};
+
+  leftNodes.forEach((node, i) => {
+    const y = PAD_Y + i * ROW_H + ROW_H/2;
+    lPos[node.id] = { x: COL_W, y };
+    const g = el('g', {cursor:'pointer'}, svg);
+    g.dataset = {};
+
+    const col = COLOR_LIGHT[node.status] || '#8b949e';
+    // rect background
+    el('rect', {
+      x: 4, y: y - RECT_H/2,
+      width: COL_W - 16, height: RECT_H,
+      rx: RECT_RX, fill: COLOR[node.status]+'22',
+      stroke: COLOR[node.status], 'stroke-width':'1'
+    }, g);
+    // label
+    const txt = el('text', {
+      x: COL_W - 20, y: y+4,
+      'text-anchor':'end', fill: col,
+      'font-size':'11'
+    }, g);
+    txt.textContent = node.label.length > 30 ? node.label.slice(0,28)+'…' : node.label;
+    // circle connector
+    el('circle', {cx: COL_W - 4, cy: y, r: NODE_R, fill: COLOR[node.status]}, g);
+
+    // hover/click
+    g.addEventListener('mouseenter', e => showTooltip(e, node));
+    g.addEventListener('mouseleave', hideTooltip);
+    g.addEventListener('click', () => showDetail(detailId, node, edges, leftNodes, rightNodes));
+    // highlight on click
+    g.setAttribute('data-nodeid', node.id);
+    g.setAttribute('data-side', 'left');
+  });
+
+  rightNodes.forEach((node, i) => {
+    const xStart = COL_W + MID_GAP;
+    const y = PAD_Y + i * ROW_H + ROW_H/2;
+    rPos[node.id] = { x: xStart, y };
+    const g = el('g', {cursor:'pointer'}, svg);
+
+    const col = COLOR_LIGHT[node.status] || '#8b949e';
+    el('rect', {
+      x: xStart + 12, y: y - RECT_H/2,
+      width: COL_W - 16, height: RECT_H,
+      rx: RECT_RX, fill: COLOR[node.status]+'22',
+      stroke: COLOR[node.status], 'stroke-width':'1'
+    }, g);
+    const txt = el('text', {
+      x: xStart + 20, y: y+4,
+      'text-anchor':'start', fill: col,
+      'font-size':'11'
+    }, g);
+    txt.textContent = node.label.length > 30 ? node.label.slice(0,28)+'…' : node.label;
+    el('circle', {cx: xStart + 8, cy: y, r: NODE_R, fill: COLOR[node.status]}, g);
+
+    g.addEventListener('mouseenter', e => showTooltip(e, node));
+    g.addEventListener('mouseleave', hideTooltip);
+    g.addEventListener('click', () => showDetail(detailId, node, edges, leftNodes, rightNodes));
+    g.setAttribute('data-nodeid', node.id);
+    g.setAttribute('data-side', 'right');
+  });
+
+  // draw edges (behind nodes - insert before first g)
+  const edgeGroup = el('g', {'class':'edges'}, svg);
+  svg.insertBefore(edgeGroup, svg.firstChild.nextSibling); // after defs
+
+  edges.forEach(([lid, rid]) => {
+    const lp = lPos[lid], rp = rPos[rid];
+    if (!lp || !rp) return;
+
+    const path = el('path', {
+      d: `M ${lp.x - 4} ${lp.y} C ${lp.x + MID_GAP/2} ${lp.y}, ${rp.x - MID_GAP/2} ${rp.y}, ${rp.x + 8} ${rp.y}`,
+      fill: 'none',
+      stroke: COLOR.covered + 'cc',
+      'stroke-width': '1.5',
+      'class': `edge edge-l-${lid} edge-r-${rid}`,
+      opacity: '0.7'
+    }, edgeGroup);
+  });
+}
+
+// ============================================================
+// TOOLTIP & DETAIL
+// ============================================================
+const tooltip = document.getElementById('tooltip');
+
+function showTooltip(e, node) {
+  tooltip.innerHTML = `<strong>${node.label}</strong><span style="color:${COLOR_LIGHT[node.status]};font-weight:600;text-transform:capitalize">${node.status}</span><br>${node.note}`;
+  tooltip.style.display = 'block';
+  moveTooltip(e);
+}
+
+document.addEventListener('mousemove', moveTooltip);
+
+function moveTooltip(e) {
+  if (tooltip.style.display === 'none') return;
+  let x = e.clientX + 14, y = e.clientY - 10;
+  if (x + 310 > window.innerWidth) x = e.clientX - 320;
+  tooltip.style.left = x + 'px';
+  tooltip.style.top  = y + 'px';
+}
+
+function hideTooltip() {
+  tooltip.style.display = 'none';
+}
+
+function showDetail(panelId, node, edges, leftNodes, rightNodes) {
+  const panel = document.getElementById(panelId);
+  const statusColor = COLOR_LIGHT[node.status];
+  const badge = `<span class="badge" style="background:${COLOR[node.status]}33;color:${statusColor};border:1px solid ${COLOR[node.status]}">${node.status.toUpperCase()}</span>`;
+
+  let connections = '';
+  if (node.id.startsWith('e_') || node.id.startsWith('m_')) {
+    // left node — find right connections
+    const linked = edges.filter(([l]) => l === node.id).map(([, r]) => rightNodes.find(rn=>rn.id===r)).filter(Boolean);
+    if (linked.length) {
+      connections = `<p style="margin-top:8px"><strong style="color:#8b949e">Mapped to RDF:</strong> ${linked.map(n=>`<code style="background:#0d1117;padding:2px 6px;border-radius:4px;color:${COLOR_LIGHT[n.status]}">${n.label}</code>`).join(', ')}</p>`;
+    }
+  } else {
+    // right node — find left connections
+    const linked = edges.filter(([,r]) => r === node.id).map(([l]) => leftNodes.find(ln=>ln.id===l)).filter(Boolean);
+    if (linked.length) {
+      connections = `<p style="margin-top:8px"><strong style="color:#8b949e">Mapped from Excel:</strong> ${linked.map(n=>`<code style="background:#0d1117;padding:2px 6px;border-radius:4px;color:${COLOR_LIGHT[n.status]}">${n.label}</code>`).join(', ')}</p>`;
+    }
+  }
+
+  panel.innerHTML = `<h3>${node.label}${badge}</h3><p>${node.note}</p>${connections}`;
+}
+
+// ============================================================
+// TABS
+// ============================================================
+function showTab(name, btn) {
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
+  btn.classList.add('active');
+}
+
+// ============================================================
+// INIT
+// ============================================================
+buildStats();
+
+renderBipartite({
+  svgId:       'svgClauses',
+  leftNodes:   EXCEL_CLAUSES,
+  rightNodes:  RDF_CLAUSES,
+  edges:       CLAUSE_EDGES,
+  detailId:    'detailClauses',
+});
+
+renderBipartite({
+  svgId:       'svgMeta',
+  leftNodes:   EXCEL_META,
+  rightNodes:  RDF_META,
+  edges:       META_EDGES,
+  detailId:    'detailMeta',
+});
+</script>
+</body>
+</html>
